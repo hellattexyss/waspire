@@ -74,7 +74,7 @@ local desc = Instance.new("TextLabel")
 desc.Size = UDim2.new(1, -20, 0, 60)
 desc.Position = UDim2.new(0, 10, 0, 68)
 desc.BackgroundTransparency = 1
-desc.Text = "Check the Official Youtube Video for script!"
+desc.Text = "Check the Discord Server for script!"
 desc.Font = Enum.Font.Gotham
 desc.TextColor3 = Color3.fromRGB(255, 255, 255)
 desc.TextSize = 16
@@ -106,7 +106,7 @@ buttonGradient.Parent = copyButton
 
 -- Copy to clipboard function
 local function copyLink()
-    local link = "https://youtu.be/X4b4BX93etQ?si=-XiK2t7NmlhI1Ad9"
+    local link = "https://discord.gg/ZJdq5MEjQy"
     if setclipboard then
         setclipboard(link)
     elseif toclipboard then
