@@ -106,7 +106,7 @@ buttonGradient.Parent = copyButton
 
 -- Copy to clipboard function
 local function copyLink()
-    local link = "https://discord.gg/ZJdq5MEjQy"
+    local link = "https://discord.gg/H2bURQxq3T"
     if setclipboard then
         setclipboard(link)
     elseif toclipboard then
