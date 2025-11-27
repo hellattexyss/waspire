@@ -285,9 +285,10 @@ end
 
 local m1Enabled = false
 local dashEnabled = false
+local scriptEnabled = true
 
 -- END SNIPPET 1
--- SNIPPET 2: Modern GUI Setup
+-- SNIPPET 2: Modern GUI Setup with Toggle Control
 
 local settingsGuiModern = Instance.new("ScreenGui")
 settingsGuiModern.Name = "SideDashAssistGUI"
@@ -342,10 +343,6 @@ borderFrame.BorderSizePixel = 0
 borderFrame.ZIndex = 0
 borderFrame.Parent = mainFrame
 Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(0, 24)
-local borderGradient = Instance.new("UIGradient")
-borderGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 0, 0)), ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26))})
-borderGradient.Rotation = 45
-borderGradient.Parent = borderFrame
 
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(0, 190, 0, 30)
@@ -406,7 +403,7 @@ local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(1, 0, 1, 0)
 toggleButton.BackgroundTransparency = 1
 toggleButton.BorderSizePixel = 0
-toggleButton.Text = "Enable Script"
+toggleButton.Text = "Disable: OFF"
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.TextSize = 20
 toggleButton.Font = Enum.Font.GothamBold
@@ -427,28 +424,84 @@ buttonGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fr
 buttonGradient.Rotation = 90
 buttonGradient.Parent = buttonBg
 
--- END SNIPPET 2
--- SNIPPET 3: Red Circle Button + circularDash Function (ORIGINAL)
+local buttonBorder = Instance.new("UIStroke")
+buttonBorder.Color = Color3.fromRGB(255, 0, 0)
+buttonBorder.Thickness = 2
+buttonBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+buttonBorder.Parent = buttonBg
 
-local dashButtonUI = Instance.new("ScreenGui")
+local dashButtonUI = nil
+
+local function updateButtonAppearance()
+	if scriptEnabled then
+		toggleButton.Text = "Disable: OFF"
+		buttonBorder.Color = Color3.fromRGB(255, 0, 0)
+		tween:Create(buttonGradient, TweenInfo.new(0.3), {Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 13, 19)), ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 0, 0))})})Play()
+		if dashButtonUI then dashButtonUI.Enabled = true end
+	else
+		toggleButton.Text = "Enable: ON"
+		buttonBorder.Color = Color3.fromRGB(110, 110, 110)
+		tween:Create(buttonGradient, TweenInfo.new(0.3), {Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(54, 54, 54)), ColorSequenceKeypoint.new(1, Color3.fromRGB(27, 27, 27))})})Play()
+		if dashButtonUI then dashButtonUI.Enabled = false end
+	end
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+	scriptEnabled = not scriptEnabled
+	updateButtonAppearance()
+end)
+
+-- END SNIPPET 2
+-- SNIPPET 3: Red Circle Button with Icon + Sleek Effects (ORIGINAL DASH)
+
+dashButtonUI = Instance.new("ScreenGui")
 dashButtonUI.Name = "DashButtonUI"
 dashButtonUI.ResetOnSpawn = false
 dashButtonUI.Parent = lp:WaitForChild("PlayerGui")
+dashButtonUI.Enabled = true
 
 local dashButton = Instance.new("Frame")
 dashButton.Name = "DashButton"
-dashButton.Size = UDim2.new(0, 100, 0, 100)
-dashButton.Position = UDim2.new(0.5, -50, 0.8, -50)
-dashButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+dashButton.Size = UDim2.new(0, 120, 0, 120)
+dashButton.Position = UDim2.new(0.5, -60, 0.8, -60)
+dashButton.BackgroundColor3 = Color3.fromRGB(220, 0, 0)
 dashButton.BorderSizePixel = 0
 dashButton.Parent = dashButtonUI
 
+-- Sleek Outer Glow/Border
+local outerGlow = Instance.new("UIStroke")
+outerGlow.Color = Color3.fromRGB(255, 50, 50)
+outerGlow.Thickness = 3
+outerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+outerGlow.Parent = dashButton
+
 local dashGradient = Instance.new("UIGradient")
-dashGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 50, 50)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 0, 0)), ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 0, 0))})
-dashGradient.Rotation = 45
+dashGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 80)),
+	ColorSequenceKeypoint.new(0.3, Color3.fromRGB(230, 50, 50)),
+	ColorSequenceKeypoint.new(0.7, Color3.fromRGB(200, 0, 20)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 0, 0))
+})
+dashGradient.Rotation = 90
 dashGradient.Parent = dashButton
 
 Instance.new("UICorner", dashButton).CornerRadius = UDim.new(1, 0)
+
+-- Icon at top
+local iconLabel = Instance.new("ImageLabel")
+iconLabel.Name = "Icon"
+iconLabel.Size = UDim2.new(0, 50, 0, 50)
+iconLabel.Position = UDim2.new(0.5, -25, 0, 5)
+iconLabel.BackgroundTransparency = 1
+iconLabel.Image = "rbxassetid://110530089410634"
+iconLabel.Parent = dashButton
+
+-- Shadow Effect for Icon
+local iconShadow = Instance.new("UIStroke")
+iconShadow.Color = Color3.fromRGB(0, 0, 0)
+iconShadow.Thickness = 1
+iconShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+iconShadow.Parent = iconLabel
 
 local dragging = false
 local dragStart = nil
@@ -484,7 +537,7 @@ input.InputEnded:Connect(function(inp)
 	if inp == dragInput and dragging then
 		local didMove = (inp.Position - dragStart).Magnitude > 8
 		if not didMove and tick() - lastDash >= 2 then
-			if not isDead() then
+			if not isDead() and scriptEnabled then
 				local target = getCurrentTarget()
 				if target then circularDash(target) end
 			end
@@ -495,7 +548,7 @@ input.InputEnded:Connect(function(inp)
 end)
 
 input.InputBegan:Connect(function(inp, gp)
-	if gp or isDashing then return end
+	if gp or isDashing or not scriptEnabled then return end
 	if isDead() then return end
 	local key = input.GamepadEnabled and Enum.KeyCode.DPadUp or Enum.KeyCode.G
 	local shouldDash = false
@@ -536,10 +589,13 @@ function circularDash(target)
 			pcall(function() h.AutoRotate = oldRot end)
 		end
 	end
+	
+	-- DEFAULT DASH SPEED: 0.70
 	local speedVal = sliderVals["Dash speed"]
 	if not speedVal then
-		speedVal = savedSettings and savedSettings.Sliders and tonumber(savedSettings.Sliders["Dash speed"]) or 49
+		speedVal = getDashDuration(60) == 0.70 and 60 or (savedSettings and savedSettings.Sliders and tonumber(savedSettings.Sliders["Dash speed"]) or 49)
 	end
+	
 	local angleVal = sliderVals["Dash Degrees"]
 	if not angleVal then
 		angleVal = savedSettings and savedSettings.Sliders and tonumber(savedSettings.Sliders["Dash Degrees"]) or 32
@@ -625,5 +681,7 @@ function circularDash(target)
 		end
 	end)
 end
+
+updateButtonAppearance()
 
 -- END SNIPPET 3: Paste all 3 in order!
