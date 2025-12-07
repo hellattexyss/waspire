@@ -506,7 +506,7 @@ end
 local sound = Instance.new("Sound")
 sound.Name = "DashSFX"
 sound.SoundId = "rbxassetid://72014632956520"
-sound.Volume = 2
+sound.Volume = 0
 sound.Looped = false
 sound.Parent = Workspace
 
@@ -793,8 +793,8 @@ end
 --// DASH BUTTON - RIGHT SIDE, BIG WHITE ICON
 
 local clickSnd = Instance.new("Sound")
-clickSnd.SoundId = "rbxassetid://6042053626"
-clickSnd.Volume = 0.7
+clickSnd.SoundId = ""
+clickSnd.Volume = 0
 clickSnd.Parent = gui
 
 -- RED CIRCULAR DASH BUTTON - RIGHT SIDE OF SCREEN
@@ -964,3 +964,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 print("best ytber of all time yoo")
+
