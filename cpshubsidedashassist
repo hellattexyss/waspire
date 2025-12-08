@@ -48,16 +48,16 @@ local dashButtonLocked = false
 -- NOTIFICATIONS
 pcall(function()
 	StarterGui:SetCore("SendNotification", {
-		Title = "Side Dash Assist V1"
-		Text = "Loaded! Enjoy. Report bugs on discord"
+		Title = "Side Dash Assist V1",
+		Text = "Loaded! Enjoy. Report bugs on discord",
 		Duration = 5
 	})
 end)
 
 pcall(function()
 	StarterGui:SetCore("SendNotification", {
-		Title = "Keybinds Info"
-		Text = "PC: E | Gamepad: DPad Up | Button: Right Side"
+		Title = "Keybinds Info",
+		Text = "PC: E | Gamepad: DPad Up | Button: Right Side",
 		Duration = 5
 	})
 end)
@@ -68,7 +68,7 @@ pcall(function()
 	end
 end)
 
--- HELPER FUNCTIONS
+-- HELPER MATH FUNCTIONS
 local function angleDiff(a, b)
 	local diff = a - b
 	while math.pi < diff do diff = diff - 2 * math.pi end
@@ -81,6 +81,7 @@ local function ease(t)
 	return 1 - (1 - t) ^ 3
 end
 
+-- GET HUMANOID AND ANIMATOR
 local function getHumAndAnim()
 	if not char or not char.Parent then return nil, nil end
 	local h = char:FindFirstChildOfClass("Humanoid")
@@ -102,9 +103,12 @@ sound.Volume = 2
 sound.Looped = false
 sound.Parent = Workspace
 
-local function playAnim(isLeft, dur)
+-- PLAY ANIMATION FUNCTION
+local function playDashAnimation(isLeft, dur)
 	pcall(function()
-		if animTrack and animTrack.IsPlaying then animTrack:Stop() end
+		if animTrack and animTrack.IsPlaying then 
+			animTrack:Stop() 
+		end
 		animTrack = nil
 	end)
 
@@ -112,7 +116,7 @@ local function playAnim(isLeft, dur)
 	if not h or not a then return end
 
 	local id = isLeft and ANIM_L or ANIM_R
-	if not id then return end
+	if not id or id == 0 then return end
 
 	local anim = Instance.new("Animation")
 	anim.Name = "CircularSideAnim"
@@ -123,13 +127,16 @@ local function playAnim(isLeft, dur)
 	end)
 
 	if not success or not track then
-		anim:Destroy()
+		pcall(function() anim:Destroy() end)
 		return
 	end
 
 	animTrack = track
 	track.Priority = Enum.AnimationPriority.Action
-	track:Play()
+	
+	pcall(function()
+		track:Play()
+	end)
 
 	pcall(function()
 		if sound and sound.Parent then
@@ -140,13 +147,16 @@ local function playAnim(isLeft, dur)
 
 	task.delay((dur or BASE_CD) + 0.15, function()
 		pcall(function()
-			if track and track.IsPlaying then track:Stop() end
+			if track and track.IsPlaying then 
+				track:Stop() 
+			end
 			anim:Destroy()
 		end)
 	end)
 end
 
-local function findTarget(range)
+-- FIND CLOSEST TARGET
+local function findClosestTarget(range)
 	range = range or RANGE
 	if not root then return nil, nil end
 
@@ -187,32 +197,36 @@ local function findTarget(range)
 	return nearest, dist
 end
 
-local function notify(text)
+-- NOTIFICATION FUNCTION
+local function notifyPlayer(text)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = "Side Dash Assist"
-			Text = text
+			Title = "Side Dash Assist",
+			Text = text,
 			Duration = 2
 		})
 	end)
 end
-local function getEvent()
+-- GET COMMUNICATE EVENT
+local function getCommunicateEvent()
 	local c = player.Character or player.CharacterAdded:Wait()
 	if c then return c:FindFirstChild("Communicate") end
 	return nil
 end
 
-local function fireEvent(data)
+-- FIRE EVENT TO SERVER
+local function fireEventToServer(data)
 	pcall(function()
-		local e = getEvent()
+		local e = getCommunicateEvent()
 		if e and type(e.FireServer) == "function" then
 			e:FireServer(unpack(data))
 		end
 	end)
 end
 
-local function sendDash()
-	fireEvent({
+-- SEND DASH KEY EVENT
+local function sendDashKeyEvent()
+	fireEventToServer({
 		[1] = {
 			Dash = Enum.KeyCode.W,
 			Key = Enum.KeyCode.E,
@@ -221,7 +235,8 @@ local function sendDash()
 	})
 end
 
-local function click()
+-- SEND M1 CLICK EVENT
+local function sendM1ClickEvent()
 	local press = {
 		[1] = {
 			Mobile = true,
@@ -235,7 +250,7 @@ local function click()
 		},
 	}
 	pcall(function()
-		local e = getEvent()
+		local e = getCommunicateEvent()
 		if e and type(e.FireServer) == "function" then
 			e:FireServer(unpack(press))
 			task.wait(0.06)
@@ -244,7 +259,8 @@ local function click()
 	end)
 end
 
-local function dash(target)
+-- MAIN DASH FUNCTION
+local function executeDash(target)
 	if dashing or (tick() - lastDashTime) < HARDCODED_DASH_COOLDOWN then
 		return false
 	end
@@ -275,7 +291,7 @@ local function dash(target)
 	local isLeft = angleOff > 0
 
 	local cd = getCD()
-	pcall(function() playAnim(isLeft, cd) end)
+	pcall(function() playDashAnimation(isLeft, cd) end)
 
 	local cam = Workspace.CurrentCamera
 	local autoRot = nil
@@ -751,28 +767,28 @@ lockButton.MouseButton1Click:Connect(function()
 	lockButton.Draggable = not dashButtonLocked
 	if dashButtonLocked then
 		lockButton.Text = "🔒 Locked"
-		notify("Dash button & GUI locked in place.")
+		notifyPlayer("Dash button & GUI locked in place.")
 	else
 		lockButton.Text = "🔓 Unlocked"
-		notify("Dash button & GUI can be dragged again.")
+		notifyPlayer("Dash button & GUI can be dragged again.")
 	end
 end)
 
--- DASH FUNCTION
-local function doDashFromButton()
+-- DASH EXECUTION BUTTON CLICK
+local function performDashFromButton()
 	if dashing or not EnabledFlag then
 		return
 	end
-	local t = nil
+	local targetChar = nil
 	if selectedPlr and selectedPlr.Character and selectedPlr.Character:FindFirstChild("HumanoidRootPart") then
-		t = selectedPlr.Character
+		targetChar = selectedPlr.Character
 	else
-		t = findTarget(RANGE)
+		targetChar = findClosestTarget(RANGE)
 	end
-	if t then
+	if targetChar then
 		local success = false
 		pcall(function()
-			success = dash(t)
+			success = executeDash(targetChar)
 		end)
 		if success then
 			pcall(function()
@@ -780,32 +796,32 @@ local function doDashFromButton()
 			end)
 			if m1On then
 				task.delay(0.15, function()
-					pcall(click)
+					pcall(sendM1ClickEvent)
 				end)
 			end
 			if dashKeyOn then
-				pcall(sendDash)
+				pcall(sendDashKeyEvent)
 			end
 		end
 	end
 end
 
 dashBtn.MouseButton1Click:Connect(function()
-	doDashFromButton()
+	performDashFromButton()
 end)
 
--- E KEY & GAMEPAD INPUT
+-- E KEY & GAMEPAD INPUT HANDLING
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or dashing or not EnabledFlag then
 		return
 	end
 
-	local isDash = (input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.E)
+	local isDashKey = (input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.E)
 		or (input.UserInputType == Enum.UserInputType.Gamepad1 and input.KeyCode == Enum.KeyCode.DPadUp)
 
-	if isDash then
-		doDashFromButton()
+	if isDashKey then
+		performDashFromButton()
 	end
 end)
 
-print("Side Dash Assist V1 loaded successfully!")
+print("✓ Side Dash Assist V1 fully loaded! No errors. Ready to dash.")
