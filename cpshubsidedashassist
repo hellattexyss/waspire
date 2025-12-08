@@ -22,7 +22,7 @@ local studs = 8
 local F_OFFSET = 3
 local B_OFFSET = 3
 local BASE_CD = 0.3
-local speedMult = 1.2
+local speedMult = 2
 local HARDCODED_DASH_COOLDOWN = 2.5
 
 local function getCD()
@@ -864,5 +864,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 print("best ytber of all time yoo")
+
 
 
