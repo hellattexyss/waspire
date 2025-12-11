@@ -1,0 +1,297 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+do
+    local loadSound = Instance.new("Sound")
+    loadSound.Parent = workspace
+    loadSound.SoundId = "rbxassetid://3442983711"
+    loadSound.Volume = 2
+    loadSound.PlayOnRemove = true
+    loadSound:Destroy()
+
+    StarterGui:SetCore("SendNotification", {
+        Title = "Aimlock",
+        Text = "Yaw Head Aimlock Loaded",
+        Duration = 2
+    })
+end
+
+task.delay(2, function()
+    local aimlockGui = Instance.new("ScreenGui")
+    aimlockGui.Name = "AimlockGui"
+    aimlockGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    aimlockGui.ResetOnSpawn = false
+
+    local watermarkLabel = Instance.new("TextLabel")
+    watermarkLabel.Name = "MerebennieWatermark"
+    watermarkLabel.Parent = aimlockGui
+    watermarkLabel.AnchorPoint = Vector2.new(0.5, 0)
+    watermarkLabel.Position = UDim2.new(0.5, 0, 0.07, 0)
+    watermarkLabel.Size = UDim2.new(0, 200, 0, 24)
+    watermarkLabel.BackgroundTransparency = 1
+    watermarkLabel.Text = "Made by Merebennie"
+    watermarkLabel.TextColor3 = Color3.fromRGB(80, 180, 255)
+    watermarkLabel.Font = Enum.Font.GothamBold
+    watermarkLabel.TextScaled = true
+    watermarkLabel.TextTransparency = 0.12
+    watermarkLabel.ZIndex = 10
+
+    local watermarkStroke = Instance.new("UIStroke")
+    watermarkStroke.Parent = watermarkLabel
+    watermarkStroke.Thickness = 2
+    watermarkStroke.Color = Color3.fromRGB(20, 80, 180)
+    watermarkStroke.Transparency = 0.2
+
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Name = "ToggleFrame"
+    toggleFrame.Parent = aimlockGui
+    toggleFrame.Size = UDim2.new(0, 110, 0, 32)
+    toggleFrame.Position = UDim2.new(0.5, -55, 0.14, 0)
+    toggleFrame.BackgroundTransparency = 0.13
+    toggleFrame.BackgroundColor3 = Color3.fromRGB(32, 54, 120)
+    toggleFrame.BorderSizePixel = 0
+    toggleFrame.ZIndex = 5
+
+    local toggleFrameCorner = Instance.new("UICorner")
+    toggleFrameCorner.CornerRadius = UDim.new(0.5, 0)
+    toggleFrameCorner.Parent = toggleFrame
+
+    local toggleFrameGradient = Instance.new("UIGradient")
+    toggleFrameGradient.Parent = toggleFrame
+    toggleFrameGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 120, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(32, 54, 120)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 200, 255))
+    })
+    toggleFrameGradient.Rotation = 25
+
+    local toggleFrameStroke = Instance.new("UIStroke")
+    toggleFrameStroke.Parent = toggleFrame
+    toggleFrameStroke.Color = Color3.fromRGB(80, 180, 255)
+    toggleFrameStroke.Thickness = 1.5
+    toggleFrameStroke.Transparency = 0.25
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "AimlockToggle"
+    toggleButton.Parent = toggleFrame
+    toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    toggleButton.Position = UDim2.new(0.5, 0, 0.5, 0)
+    toggleButton.Size = UDim2.new(0.94, 0, 0.8, 0)
+    toggleButton.Text = "Aimlock: OFF"
+    toggleButton.TextColor3 = Color3.fromRGB(220, 240, 255)
+    toggleButton.TextStrokeTransparency = 0.15
+    toggleButton.TextStrokeColor3 = Color3.fromRGB(0, 60, 140)
+    toggleButton.TextScaled = true
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.BackgroundColor3 = Color3.fromRGB(80, 150, 255)
+    toggleButton.AutoButtonColor = false
+    toggleButton.ZIndex = 6
+
+    local toggleButtonCorner = Instance.new("UICorner")
+    toggleButtonCorner.CornerRadius = UDim.new(0.5, 0)
+    toggleButtonCorner.Parent = toggleButton
+
+    local toggleButtonGradient = Instance.new("UIGradient")
+    toggleButtonGradient.Parent = toggleButton
+    toggleButtonGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 230, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 150, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 54, 120))
+    })
+    toggleButtonGradient.Rotation = 65
+
+    local toggleButtonStroke = Instance.new("UIStroke")
+    toggleButtonStroke.Parent = toggleButton
+    toggleButtonStroke.Color = Color3.fromRGB(220, 240, 255)
+    toggleButtonStroke.Thickness = 1.2
+    toggleButtonStroke.Transparency = 0.12
+
+    local isDragging = false
+    local dragInput = nil
+    local dragStartInputPosition = nil
+    local dragStartFramePosition = nil
+
+    toggleFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            dragStartInputPosition = input.Position
+            dragStartFramePosition = toggleFrame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                end
+            end)
+        end
+    end)
+
+    toggleFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and isDragging then
+            local delta = input.Position - dragStartInputPosition
+            toggleFrame.Position = UDim2.new(
+                dragStartFramePosition.X.Scale,
+                dragStartFramePosition.X.Offset + delta.X,
+                dragStartFramePosition.Y.Scale,
+                dragStartFramePosition.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    local aimlockEnabled = false
+    local currentTarget = nil
+
+    local function getTargetInViewCone()
+        local character = LocalPlayer.Character
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        if not rootPart then
+            return nil
+        end
+
+        local liveFolder = workspace:FindFirstChild("Live")
+        if not liveFolder then
+            return nil
+        end
+
+        local cameraLookVector = Camera.CFrame.LookVector
+        local bestAngle = 30
+        local bestTarget = nil
+
+        for _, potentialTarget in ipairs(liveFolder:GetChildren()) do
+            if potentialTarget:IsA("Model") and potentialTarget ~= character then
+                local head = potentialTarget:FindFirstChild("Head")
+                local humanoid = potentialTarget:FindFirstChild("Humanoid")
+
+                if head and humanoid and humanoid.Health > 0 then
+                    local directionToHead = (head.Position - Camera.CFrame.Position).Unit
+                    local angle = math.deg(math.acos(math.clamp(cameraLookVector:Dot(directionToHead), -1, 1)))
+
+                    if angle < bestAngle then
+                        bestAngle = angle
+                        bestTarget = potentialTarget
+                    end
+                end
+            end
+        end
+
+        return bestTarget
+    end
+
+    local function getNearestTargetByDistance(maxDistance)
+        local targetDistance = maxDistance or 20
+        local character = LocalPlayer.Character
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        if not rootPart then
+            return nil
+        end
+
+        local liveFolder = workspace:FindFirstChild("Live")
+        if not liveFolder then
+            return nil
+        end
+
+        local closestTarget = nil
+
+        for _, potentialTarget in ipairs(liveFolder:GetChildren()) do
+            if potentialTarget:IsA("Model") and potentialTarget ~= character then
+                local head = potentialTarget:FindFirstChild("Head")
+                local humanoid = potentialTarget:FindFirstChild("Humanoid")
+
+                if head and humanoid and humanoid.Health > 0 then
+                    local distance = (head.Position - rootPart.Position).Magnitude
+                    if distance < targetDistance then
+                        targetDistance = distance
+                        closestTarget = potentialTarget
+                    end
+                end
+            end
+        end
+
+        return closestTarget
+    end
+
+    RunService.Stepped:Connect(function()
+        if aimlockEnabled then
+            if not currentTarget then
+                currentTarget = getTargetInViewCone()
+            end
+
+            if currentTarget then
+                local targetHumanoid = currentTarget:FindFirstChild("Humanoid")
+                if not currentTarget.Parent or not targetHumanoid or targetHumanoid.Health <= 0 then
+                    currentTarget = getNearestTargetByDistance(20)
+                end
+            end
+
+            if currentTarget then
+                local targetHead = currentTarget:FindFirstChild("Head")
+                local character = LocalPlayer.Character
+                local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+                if targetHead and rootPart then
+                    local rootPosition = rootPart.Position
+                    local headPosition = targetHead.Position
+                    local flatDirection = Vector3.new(
+                        headPosition.X - rootPosition.X,
+                        0,
+                        headPosition.Z - rootPosition.Z
+                    )
+
+                    if flatDirection.Magnitude > 0.01 then
+                        rootPart.CFrame = CFrame.new(rootPosition, rootPosition + flatDirection)
+                    end
+                end
+            end
+        end
+    end)
+
+    local function updateToggleVisuals(enabled)
+        if enabled then
+            toggleButton.Text = "Aimlock: ON"
+            TweenService:Create(toggleButton, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+            }):Play()
+
+            toggleButtonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 230, 255)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 180, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 54, 120))
+            })
+        else
+            toggleButton.Text = "Aimlock: OFF"
+            TweenService:Create(toggleButton, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                BackgroundColor3 = Color3.fromRGB(80, 150, 255)
+            }):Play()
+
+            toggleButtonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 230, 255)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 150, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 54, 120))
+            })
+        end
+    end
+
+    toggleButton.MouseButton1Click:Connect(function()
+        if not isDragging then
+            aimlockEnabled = not aimlockEnabled
+            updateToggleVisuals(aimlockEnabled)
+
+            if not aimlockEnabled then
+                currentTarget = nil
+            end
+        end
+    end)
+
+    updateToggleVisuals(aimlockEnabled)
+end)
