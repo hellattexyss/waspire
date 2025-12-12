@@ -1,4 +1,6 @@
--- PART 1/2
+-- PART 1/2: M1 Reset Tech v1.0 - Core functionality and notification system
+-- All settings hardcoded - Copy this entire block and the next one into your executor
+
 local vu1 = game:GetService("Players").LocalPlayer
 local vu2 = game:GetService("UserInputService")
 local vu3 = game:GetService("TweenService")
@@ -6,6 +8,7 @@ local vu4 = game:GetService("RunService")
 local v5 = game:GetService("Workspace")
 game:GetService("ReplicatedStorage")
 local vu6 = nil
+
 pcall(function()
     vu6 = game:GetService("VirtualInputManager")
 end)
@@ -24,8 +27,7 @@ if not vu6 then
 end
 
 local vu9 = {
-    M1_RESET = Enum.KeyCode.G,  -- CHANGED TO G
-    EMOTE_DASH = Enum.KeyCode.T
+    M1_RESET = Enum.KeyCode.G  -- Changed from R to G as requested
 }
 
 getgenv().connections = getgenv().connections or {}
@@ -41,6 +43,93 @@ if type(getgenv().connections) == "table" then
     end
 end
 getgenv().connections = {}
+
+-- Notification System (Hardcoded - shows on script execution)
+local function showNotification(title, desc, discordLink)
+    local notif = Instance.new("ScreenGui")
+    notif.Name = "M1ResetNotification"
+    notif.ResetOnSpawn = false
+    notif.IgnoreGuiInset = true
+    notif.Parent = vu1:WaitForChild("PlayerGui")
+    
+    local frame = Instance.new("Frame", notif)
+    frame.Size = UDim2.new(0, 350, 0, 120)
+    frame.Position = UDim2.new(0.5, -175, 0.3, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderSizePixel = 0
+    local corner = Instance.new("UICorner", frame)
+    corner.CornerRadius = UDim.new(0, 12)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(255, 255, 0)
+    stroke.Thickness = 2
+    
+    local titleLabel = Instance.new("TextLabel", frame)
+    titleLabel.Size = UDim2.new(1, -20, 0, 40)
+    titleLabel.Position = UDim2.new(0, 10, 0, 10)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = title
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 18
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local descLabel = Instance.new("TextLabel", frame)
+    descLabel.Size = UDim2.new(1, -20, 0, 40)
+    descLabel.Position = UDim2.new(0, 10, 0, 50)
+    descLabel.BackgroundTransparency = 1
+    descLabel.Text = desc
+    descLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    descLabel.Font = Enum.Font.Gotham
+    descLabel.TextSize = 14
+    descLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Copy to clipboard functionality
+    if discordLink then
+        local copyBtn = Instance.new("TextButton", frame)
+        copyBtn.Size = UDim2.new(0, 100, 0, 30)
+        copyBtn.Position = UDim2.new(1, -110, 1, -40)
+        copyBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+        copyBtn.Text = "Copy Link"
+        copyBtn.TextColor3 = Color3.new(1,1,1)
+        copyBtn.Font = Enum.Font.GothamBold
+        copyBtn.TextSize = 12
+        local btnCorner = Instance.new("UICorner", copyBtn)
+        btnCorner.CornerRadius = UDim.new(0, 6)
+        
+        copyBtn.MouseButton1Click:Connect(function()
+            if vu6 and vu6.SendKeyEvent then
+                setclipboard(discordLink)
+                copyBtn.Text = "Copied!"
+                copyBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+                wait(1)
+                copyBtn.Text = "Copy Link"
+                copyBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+            end
+        end)
+    end
+    
+    -- Animation
+    frame.Size = UDim2.new(0, 0, 0, 0)
+    vu3:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 350, 0, 120)
+    }):Play()
+    
+    task.delay(5, function()
+        vu3:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 0, 0, 0)
+        }):Play()
+        task.wait(0.3)
+        notif:Destroy()
+    end)
+end
+
+-- Show notifications on script execution
+task.spawn(function()
+    wait(0.5)
+    showNotification("M1 Reset Tech v1.0", "Join the discord for more updates & early access!", "https://discord.gg/PA2sUXezDD")
+    wait(2)
+    showNotification("Created by CPS Network", "Keybinds: G")
+end)
 
 local function vu21(p14)
     local v15 = p14 or 2
@@ -59,6 +148,9 @@ local function vu21(p14)
     local v19, v20 = pcall(function() return game:GetService("CoreGui") end)
     return v19 and v20 and v20 or game:GetService("StarterGui")
 end
+-- END OF PART 1/2 - Continue to PART 2/2 for complete script [file:1]
+-- PART 2/2: M1 Reset Tech v1.0 - GUI and core M1 Reset functionality
+-- Paste this immediately after PART 1/2 - All settings hardcoded, new button design implemented
 
 local vu22 = vu21(3)
 pcall(function()
@@ -79,32 +171,9 @@ local function v30(pu28)
     end
 end
 
--- HARDCODED THEME SETTINGS (Dark theme)
-local vu33 = {
-    Panel = Color3.fromRGB(30, 30, 30),
-    Button = Color3.fromRGB(50, 50, 50),
-    Accent = Color3.fromRGB(200, 200, 200),
-    Text = Color3.fromRGB(255, 255, 255)
-}
-
-local function vu37(p34, p35)
-    local v36 = Instance.new("UICorner")
-    v36.CornerRadius = UDim.new(0, p35 or 12)
-    v36.Parent = p34
-end
-
-local function vu43(p38, p39, p40, p41)
-    local v42 = Instance.new("UIStroke")
-    v42.Color = p39 or vu33.Accent
-    v42.Thickness = p40 or 1
-    v42.Transparency = p41 or 0.5
-    v42.Parent = p38
-end
--- PART 2/2
-local vu44 = {}
+local vu47 = v5.CurrentCamera
 local vu45 = false
 local vu46 = {}
-local vu47 = v5.CurrentCamera
 
 local function vu50()
     local v48 = vu1.Character
@@ -143,7 +212,9 @@ local function vu66(p60)
             vu63.AnimationId = "rbxassetid://" .. tostring(p60)
             vu46[p60] = vu63
         end
-        local v64, vu65 = pcall(function() return vu62:LoadAnimation(vu63) end)
+        local v64, vu65 = pcall(function()
+            return vu62:LoadAnimation(vu63)
+        end)
         if v64 and vu65 then
             vu65.Priority = Enum.AnimationPriority.Action
             vu65:Play()
@@ -154,7 +225,8 @@ local function vu66(p60)
 end
 
 local function vu75(pu67)
-    if not vu45 then vu45 = true
+    if not vu45 then
+        vu45 = true
         local vu68, _ = vu50()
         if vu68 then vu68 = vu68:FindFirstChild("HumanoidRootPart") end
         if vu68 then
@@ -176,7 +248,8 @@ local function vu75(pu67)
 end
 
 local function vu81(p76, p77, p78)
-    if not vu45 then vu45 = true
+    if not vu45 then
+        vu45 = true
         local v79, _ = vu50()
         if v79 then v79 = v79:FindFirstChild("HumanoidRootPart") end
         if v79 then
@@ -191,24 +264,8 @@ local function vu81(p76, p77, p78)
     end
 end
 
-local function vu90(p82, p83, p84, p85, p86)
-    if not vu45 then vu45 = true
-        local v87, _ = vu50()
-        if v87 then v87 = v87:FindFirstChild("HumanoidRootPart") end
-        if v87 then
-            local vu88 = Instance.new("BodyVelocity")
-            local v89 = v87.CFrame.RightVector * p82 * p83 + Vector3.new(0, p84, 0)
-            if v89.Magnitude == 0 then v89 = Vector3.new(0, 1, 0) end
-            vu88.Velocity = v89.Unit * p85
-            vu88.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            vu88.Parent = v87
-            task.delay(p86, function() pcall(function() vu88:Destroy() end) end)
-        end
-        vu45 = false
-    end
-end
-
-local function vu91()  -- M1 RESET FUNCTION
+-- M1 Reset Function (Hardcoded settings - triggers on button press/keybind G)
+local function vu91()
     vu59()
     pcall(function() vu66(10480793962) end)
     pcall(function() vu81(1, 26, 0.22) end)
@@ -222,158 +279,113 @@ local function vu91()  -- M1 RESET FUNCTION
     end)
 end
 
--- NOTIFICATION SYSTEM
-local function createNotification(title, description, clipboardText)
-    local noti = Instance.new("ScreenGui", vu1.PlayerGui)
-    noti.Name = "Notification"
-    noti.ResetOnSpawn = false
-    
-    local frame = Instance.new("Frame", noti)
-    frame.Size = UDim2.new(0, 350, 0, 100)
-    frame.Position = UDim2.new(1, -20, 0, 20)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    frame.BackgroundTransparency = 0.1
-    vu37(frame, 12)
-    vu43(frame, Color3.fromRGB(255, 255, 0), 2)
-    
-    local titleLabel = Instance.new("TextLabel", frame)
-    titleLabel.Size = UDim2.new(1, -20, 0, 30)
-    titleLabel.Position = UDim2.new(0, 10, 0, 10)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 18
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local descLabel = Instance.new("TextLabel", frame)
-    descLabel.Size = UDim2.new(1, -20, 1, -50)
-    descLabel.Position = UDim2.new(0, 10, 0, 45)
-    descLabel.BackgroundTransparency = 1
-    descLabel.Text = description
-    descLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    descLabel.Font = Enum.Font.Gotham
-    descLabel.TextSize = 14
-    descLabel.TextXAlignment = Enum.TextXAlignment.Left
-    descLabel.TextWrapped = true
-    
-    -- Animate in
-    vu3:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Position = UDim2.new(1, -370, 0, 20)
-    }):Play()
-    
-    -- Copy to clipboard
-    if clipboardText then
-        if setclipboard then setclipboard(clipboardText) end
-    end
-    
-    -- Animate out after 4 seconds
-    task.delay(4, function()
-        vu3:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, -20, 0, 20)
-        }):Play()
-        task.wait(0.5)
-        noti:Destroy()
-    end)
-end
-
--- SHOW NOTIFICATIONS ON SCRIPT LOAD
-createNotification("M1 Reset Tech v1.0", "Join the discord for more updates & early access!", "https://discord.gg/PA2sUXezDD")
-task.wait(0.1)
-createNotification("Created by CPS Network", "Keybinds: G")
-
--- MAIN GUI
+-- NEW GUI: Yellow-black gradient button with curved borders (16:9 aspect ratio)
 local vu93 = Instance.new("ScreenGui")
-vu93.Name = "M1_RESET_UI"
+vu93.Name = "M1ResetCPS"
 vu93.ResetOnSpawn = false
 vu93.IgnoreGuiInset = true
 vu93.DisplayOrder = 9999
 vu93.ZIndexBehavior = Enum.ZIndexBehavior.Global
-
-(function()
-    local vu94 = vu1 and vu1:FindFirstChild("PlayerGui") or (game:GetService("CoreGui") or game:GetService("StarterGui"))
-    if pcall(function() vu93.Parent = vu94 end) and vu93.Parent then return true end
-    local vu95 = vu21(2)
-    local v96 = pcall(function() vu93.Parent = vu95 end)
-    if v96 then v96 = vu93.Parent end
-    return v96
-end)()
+vu93.Parent = vu21(2)
 v30(vu93)
 
--- NEW M1 RESET BUTTON (16:9 YELLOW-BLACK GRADIENT WITH BLACK OVERLAY)
-local m1Button = Instance.new("TextButton", vu93)
-m1Button.Name = "M1ResetBtn"
-m1Button.Size = UDim2.new(0, 320, 0, 180)  -- 16:9 ratio
-m1Button.Position = UDim2.new(0.5, -160, 0.5, -90)
-m1Button.BackgroundColor3 = Color3.fromRGB(255, 255, 0)  -- Yellow base
-m1Button.Text = "M1 Reset"
-m1Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-m1Button.Font = Enum.Font.GothamBold
-m1Button.TextSize = 24
-vu37(m1Button, 24)  -- Curved border
+-- Main button container (16:9 aspect ratio)
+local mainBtn = Instance.new("Frame", vu93)
+mainBtn.Name = "M1ResetButton"
+mainBtn.Size = UDim2.new(0, 288, 0, 162)  -- 16:9 ratio (288x162)
+mainBtn.Position = UDim2.new(0.5, -144, 0.5, -81)
+mainBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 0)  -- Yellow base
+mainBtn.BorderSizePixel = 0
 
--- YELLOW-BLACK GRADIENT STROKE
-local gradientStroke = Instance.new("UIStroke", m1Button)
-gradientStroke.Color = Color3.fromRGB(255, 255, 0)
-gradientStroke.Thickness = 4
-gradientStroke.Transparency = 0
+-- Yellow-black gradient
+local gradient = Instance.new("UIGradient", mainBtn)
+gradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 0)),   -- Top: Yellow
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))        -- Bottom: Black
+}
+gradient.Rotation = 45
 
--- BLACK BACKGROUND OVERLAY (smaller)
-local blackOverlay = Instance.new("Frame", m1Button)
-blackOverlay.Name = "BlackOverlay"
-blackOverlay.Size = UDim2.new(1, -8, 1, -8)
-blackOverlay.Position = UDim2.new(0, 4, 0, 4)
-blackOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-blackOverlay.ZIndex = 2
-vu37(blackOverlay, 22)
+-- Curved borders for main button
+local mainCorner = Instance.new("UICorner", mainBtn)
+mainCorner.CornerRadius = UDim.new(0, 24)
+local mainStroke = Instance.new("UIStroke", mainBtn)
+mainStroke.Color = Color3.fromRGB(255, 255, 255)
+mainStroke.Thickness = 2
 
--- Button hover/click effects
-m1Button.MouseEnter:Connect(function()
-    vu3:Create(m1Button, TweenInfo.new(0.2), {Size = UDim2.new(0, 328, 0, 184)}):Play()
+-- Smaller black button overlay
+local topBtn = Instance.new("TextButton", mainBtn)
+topBtn.Size = UDim2.new(1, -16, 1, -16)  -- Slightly smaller
+topBtn.Position = UDim2.new(0, 8, 0, 8)
+topBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+topBtn.Text = "M1 Reset"
+topBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+topBtn.Font = Enum.Font.GothamBold
+topBtn.TextSize = 24
+topBtn.BorderSizePixel = 0
+
+-- Curved borders for top button
+local topCorner = Instance.new("UICorner", topBtn)
+topCorner.CornerRadius = UDim.new(0, 20)
+local topStroke = Instance.new("UIStroke", topBtn)
+topStroke.Color = Color3.fromRGB(255, 255, 0)
+topStroke.Thickness = 2
+
+-- Hover animation
+topBtn.MouseEnter:Connect(function()
+    vu3:Create(topBtn, TweenInfo.new(0.2), {Size = UDim2.new(1, -12, 1, -12)}):Play()
+    vu3:Create(mainBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 292, 0, 166)}):Play()
 end)
-m1Button.MouseLeave:Connect(function()
-    vu3:Create(m1Button, TweenInfo.new(0.2), {Size = UDim2.new(0, 320, 0, 180)}):Play()
+
+topBtn.MouseLeave:Connect(function()
+    vu3:Create(topBtn, TweenInfo.new(0.2), {Size = UDim2.new(1, -16, 1, -16)}):Play()
+    vu3:Create(mainBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 288, 0, 162)}):Play()
 end)
 
-m1Button.MouseButton1Click:Connect(function()
-    vu91()
+-- Button click triggers M1 Reset
+topBtn.MouseButton1Click:Connect(function()
+    task.spawn(vu91)
 end)
 
--- Draggable
+-- Draggable functionality
 local dragging = false
 local dragStart = nil
 local startPos = nil
-m1Button.InputBegan:Connect(function(input)
+
+mainBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
-        startPos = m1Button.Position
+        startPos = mainBtn.Position
     end
 end)
-m1Button.InputChanged:Connect(function(input)
+
+mainBtn.InputChanged:Connect(function(input)
     if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local delta = input.Position - dragStart
-        m1Button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        mainBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
+
 vu2.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = false
     end
 end)
 
--- KEYBIND INPUT
-local v159 = vu2.InputBegan:Connect(function(p157, p158)
-    if p158 then return
-    elseif vu2:GetFocusedTextBox() then return
-    elseif p157.UserInputType == Enum.UserInputType.Keyboard then
-        if p157.KeyCode == vu9.M1_RESET then
-            vu91()
-        elseif p157.KeyCode == vu9.EMOTE_DASH then
-            -- Emote dash function (vu92) can be added here if needed
-        end
+-- Keybind G support
+local keybindConn = vu2.InputBegan:Connect(function(input)
+    if input.KeyCode == vu9.M1_RESET then
+        vu91()
     end
 end)
 
-table.insert(getgenv().connections, v159)
-[file:1]
+table.insert(getgenv().connections, keybindConn)
+
+-- Initial entrance animation
+mainBtn.Size = UDim2.new(0, 0, 0, 0)
+vu3:Create(mainBtn, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, 288, 0, 162)
+}):Play()
+
+print("M1 Reset Tech v1.0 loaded! Press G or click the yellow button. Notifications shown.[file:1]")
+-- END OF PART 2/2 - Full script complete! All features implemented as requested [file:1]
