@@ -862,7 +862,7 @@ local keyInfo2 = Instance.new("TextLabel")
 keyInfo2.Size = UDim2.new(1, -20, 0, 24)
 keyInfo2.Position = UDim2.new(0, 10, 0, 66)
 keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "PC GUI: Use on-screen buttons"
+keyInfo2.Text = "Mobile Button :)"
 keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
 keyInfo2.TextSize = 15
 keyInfo2.Font = Enum.Font.Gotham
@@ -1061,3 +1061,4 @@ end)
 print("subscribe to Waspire :)")
 
 -- subscribe to Waspire :)
+
