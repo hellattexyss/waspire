@@ -64,18 +64,11 @@ local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
-local BUTTON_PRESS_SOUND_ID = "rbxassetid://5852470908"
 
 --// STATE
 local isDashing = false
 local sideAnimationTrack = nil
 local lastButtonPressTime = -math.huge
-local dashSound = Instance.new("Sound")
-dashSound.Name = "DashSFX"
-dashSound.SoundId = "rbxassetid://72014632956520"
-dashSound.Volume = 2
-dashSound.Looped = false
-dashSound.Parent = WorkspaceService
 
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
@@ -118,18 +111,18 @@ local blur = Instance.new("BlurEffect")
 blur.Size = 0
 blur.Parent = Lighting
 
---// NOTIFICATIONS
-pcall(function()
-	StarterGui:SetCore("SendNotification", {
-		Title = "Side Dash Assist v1.0",
-		Text = "Press E or click dash button!",
-		Duration = 4
-	})
-end)
+--// NOTIFICATIONS & SOUNDS
+local function notify(title, text)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = title,
+			Text = text,
+			Duration = 3
+		})
+	end)
+end
 
-pcall(function()
-	if setclipboard then setclipboard("https://discord.gg/YFf3rdXbUf") end
-end)
+notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
 --// ANIMATION & TARGETING
 local function getHumanoidAndAnimator()
 	if not (Character and Character.Parent) then return nil, nil end
@@ -159,8 +152,7 @@ local function playSideAnimation(isLeftDirection)
 			loadedAnimation.Priority = Enum.AnimationPriority.Action
 			pcall(function() loadedAnimation.Looped = false end)
 			loadedAnimation:Play()
-			pcall(function() dashSound:Stop() dashSound:Play() end)
-			delay(0.45 + 0.15, function()
+			delay(0.6, function()
 				pcall(function() if loadedAnimation and loadedAnimation.IsPlaying then loadedAnimation:Stop() end end)
 				pcall(function() animationInstance:Destroy() end)
 			end)
@@ -357,7 +349,7 @@ local function communicateWithServer(communicationData)
 	end)
 end
 
---// MAIN CIRCULAR DASH WITH AIR FIX
+--// MAIN CIRCULAR DASH WITH GROUND AIR FIX
 local function performCircularDash(targetCharacter)
 	if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
 	isDashing = true
@@ -429,13 +421,15 @@ local function performCircularDash(targetCharacter)
 			local clampedRadius = math.clamp(currentRadius, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
 			local currentAngle = angleToTarget + directionMultiplier * dashAngleRad * easeInOutCubic(progress)
 			local currentTargetPosition = targetRoot.Position
-			local targetY = currentTargetPosition.Y
+			
+			--// AIR FIX: Get YOUR ground level Y (not target's Y)
+			local playerGroundY = HumanoidRootPart.Position.Y
+			
 			local circleX = currentTargetPosition.X + clampedRadius * math.cos(currentAngle)
 			local circleZ = currentTargetPosition.Z + clampedRadius * math.sin(currentAngle)
 			
-			--// AIR FIX: Keep player on ground level (target's Y position, not their aerial Y)
-			local playerGroundLevel = targetY
-			local newPosition = Vector3.new(circleX, playerGroundLevel, circleZ)
+			--// Create position at your ground level, not target's level
+			local newPosition = Vector3.new(circleX, playerGroundY, circleZ)
 			
 			if targetRoot then currentTargetPosition = targetRoot.Position or currentTargetPosition end
 			local angleToTargetPosition = math.atan2((currentTargetPosition - newPosition).Z, (currentTargetPosition - newPosition).X)
@@ -479,10 +473,10 @@ gui.Name = "SideDashAssistGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
---// SOUNDS
+--// SOUNDS WITH YOUR IDS
 local uiClickSound = Instance.new("Sound")
 uiClickSound.Name = "UIClickSound"
-uiClickSound.SoundId = "rbxassetid://5991592592"
+uiClickSound.SoundId = "rbxassetid://6042053626"
 uiClickSound.Volume = 0.7
 uiClickSound.Parent = gui
 
@@ -724,36 +718,6 @@ comingSoon.Font = Enum.Font.GothamBold
 comingSoon.TextXAlignment = Enum.TextXAlignment.Center
 comingSoon.Parent = settingsOverlay
 
-local keybindFrame = Instance.new("Frame")
-keybindFrame.Size = UDim2.new(1, -32, 0, 110)
-keybindFrame.Position = UDim2.new(0, 16, 0, 110)
-keybindFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindFrame.BorderSizePixel = 0
-keybindFrame.Parent = settingsOverlay
-Instance.new("UICorner", keybindFrame).CornerRadius = UDim.new(0, 14)
-
-local keyTitle = Instance.new("TextLabel")
-keyTitle.Size = UDim2.new(1, -20, 0, 30)
-keyTitle.Position = UDim2.new(0, 10, 0, 8)
-keyTitle.BackgroundTransparency = 1
-keyTitle.Text = "Keybind Info"
-keyTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-keyTitle.TextSize = 18
-keyTitle.Font = Enum.Font.GothamBold
-keyTitle.TextXAlignment = Enum.TextXAlignment.Left
-keyTitle.Parent = keybindFrame
-
-local keyInfo1 = Instance.new("TextLabel")
-keyInfo1.Size = UDim2.new(1, -20, 0, 24)
-keyInfo1.Position = UDim2.new(0, 10, 0, 40)
-keyInfo1.BackgroundTransparency = 1
-keyInfo1.Text = "PC Keybind: E"
-keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo1.TextSize = 15
-keyInfo1.Font = Enum.Font.Gotham
-keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo1.Parent = keybindFrame
-
 --// OPEN/LOCK BUTTONS
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
@@ -788,16 +752,14 @@ lockButton.Parent = gui
 lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
---// RED DASH BUTTON (110x110 RED CIRCLE)
+--// RED DASH BUTTON (110x110 FRAME - NO OVERLAY!)
 local dashBtn = Instance.new("Frame")
 dashBtn.Name = "DashButton_Final"
 dashBtn.Size = UDim2.new(0, 110, 0, 110)
 dashBtn.Position = UDim2.new(1, -125, 0.5, -55)
 dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 dashBtn.BorderSizePixel = 0
-dashBtn.BackgroundTransparency = 0
 dashBtn.Parent = gui
-dashBtn.Draggable = true
 dashBtn.Active = true
 Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
 local dashGrad = Instance.new("UIGradient", dashBtn)
@@ -815,17 +777,8 @@ dashIcon.Position = UDim2.new(0.5, -47.5, 0.5, -47.5)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
 
-local dashButtonInput = Instance.new("TextButton")
-dashButtonInput.Name = "DashButtonInput"
-dashButtonInput.Size = UDim2.new(0, 110, 0, 110)
-dashButtonInput.Position = UDim2.new(1, -125, 0.5, -55)
-dashButtonInput.BackgroundTransparency = 1
-dashButtonInput.BorderSizePixel = 0
-dashButtonInput.Text = ""
-dashButtonInput.Parent = gui
-
 --// NOTIFY FUNCTION
-local function notify(text)
+local function notifyGui(text)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
 			Title = "Side Dash Assist",
@@ -840,26 +793,28 @@ lockButton.MouseButton1Click:Connect(function()
 	uiClickSound:Play()
 	dashButtonLocked = not dashButtonLocked
 	dashBtn.Draggable = not dashButtonLocked
-	dashButtonInput.Draggable = not dashButtonLocked
 	mainFrame.Draggable = not dashButtonLocked
 	openButton.Draggable = not dashButtonLocked
 	lockButton.Draggable = not dashButtonLocked
 	if dashButtonLocked then
 		lockButton.Text = "🔒 Locked"
-		notify("Dash button & GUI locked in place.")
+		notifyGui("Dash button & GUI locked in place.")
 	else
 		lockButton.Text = "🔓 Unlocked"
-		notify("Dash button & GUI can be dragged again.")
+		notifyGui("Dash button & GUI can be dragged again.")
 	end
 end)
 
-dashButtonInput.MouseButton1Click:Connect(function()
-	dashClickSound:Play()
-	local target = getCurrentTarget()
-	if target then
-		performCircularDash(target)
-	else
-		notify("No target found!")
+--// DASH BUTTON CLICK (CLICKABLE ALWAYS)
+dashBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dashClickSound:Play()
+		local target = getCurrentTarget()
+		if target then
+			performCircularDash(target)
+		else
+			notifyGui("No target found!")
+		end
 	end
 end)
 
@@ -912,9 +867,9 @@ discordBtn.MouseButton1Click:Connect(function()
 	uiClickSound:Play()
 	if setclipboard then
 		setclipboard("https://discord.gg/YFf3rdXbUf")
-		notify("Discord invite copied to clipboard.")
+		notifyGui("Discord invite copied to clipboard.")
 	else
-		notify("Discord: https://discord.gg/YFf3rdXbUf")
+		notifyGui("Discord: https://discord.gg/YFf3rdXbUf")
 	end
 end)
 
@@ -922,9 +877,9 @@ ytBtn.MouseButton1Click:Connect(function()
 	uiClickSound:Play()
 	if setclipboard then
 		setclipboard("https://youtube.com/@waspire")
-		notify("YouTube link copied to clipboard.")
+		notifyGui("YouTube link copied to clipboard.")
 	else
-		notify("YouTube: https://youtube.com/@waspire")
+		notifyGui("YouTube: https://youtube.com/@waspire")
 	end
 end)
 
@@ -938,4 +893,4 @@ task.delay(0.1, function()
 	loadSound:Play()
 end)
 
-print("sub to wasp :)")
+print("subscribe to waspire :)")
