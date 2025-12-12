@@ -63,7 +63,7 @@ local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
-local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
+local CIRCLE_COMPLETION_THRESHOLD = 100 / 150
 
 --// STATE
 local isDashing = false
@@ -894,3 +894,4 @@ task.delay(0.1, function()
 end)
 
 print("subscribe to waspire :)")
+
