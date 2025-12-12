@@ -1,4 +1,6 @@
---// CLEANUP
+--// SNIPPET 1 - CORE SETUP
+
+-- Cleanup old GUIs
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     for _, name in ipairs({"SideDashAssistGUI"}) do
@@ -9,7 +11,7 @@ end)
 
 task.wait(0.1)
 
---// SERVICES
+-- Services
 local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local InputService = game:GetService("UserInputService")
@@ -41,7 +43,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
---// ANIMATIONS
+-- Animations
 local ANIMATION_IDS = {
     [10449761463] = {Left = 10480796021, Right = 10480793962, Straight = 10479335397},
     [13076380114] = {Left = 101843860692381, Right = 100087324592640, Straight = 110878031211717}
@@ -52,34 +54,53 @@ local leftAnimationId = currentGameAnimations.Left
 local rightAnimationId = currentGameAnimations.Right
 local straightAnimationId = currentGameAnimations.Straight
 
---// CONSTANTS
+-- Constants
 local MAX_TARGET_RANGE = 40
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
-local DASH_SPEED = 120
+
+-- Increased dash speed
+local DASH_SPEED = 180
+
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
 
---// STATE
+-- State
 local isDashing = false
 local sideAnimationTrack = nil
+local straightAnimationTrack = nil
 local lastButtonPressTime = -math.huge
 
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
 
+-- Dash SFX (non-button)
+local dashSound = Instance.new("Sound")
+dashSound.Name = "DashSFX"
+dashSound.SoundId = "rbxassetid://3084314259"
+dashSound.Volume = 2
+dashSound.Looped = false
+dashSound.Parent = WorkspaceService
+
 local function setupAutoRotateProtection()
-    if autoRotateConnection then pcall(function() autoRotateConnection:Disconnect() end) autoRotateConnection = nil end
+    if autoRotateConnection then
+        pcall(function() autoRotateConnection:Disconnect() end)
+        autoRotateConnection = nil
+    end
     local targetHumanoid = Character:FindFirstChildOfClass("Humanoid")
     if targetHumanoid then
         autoRotateConnection = targetHumanoid:GetPropertyChangedSignal("AutoRotate"):Connect(function()
             if isAutoRotateDisabled then
-                pcall(function() if targetHumanoid and targetHumanoid.AutoRotate then targetHumanoid.AutoRotate = false end end)
+                pcall(function()
+                    if targetHumanoid and targetHumanoid.AutoRotate then
+                        targetHumanoid.AutoRotate = false
+                    end
+                end)
             end
         end)
     end
@@ -94,7 +115,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     setupAutoRotateProtection()
 end)
 
---// MATH HELPERS
+-- Math helpers
 local function getAngleDifference(angle1, angle2)
     local difference = angle1 - angle2
     while math.pi < difference do difference = difference - 2 * math.pi end
@@ -106,12 +127,12 @@ local function easeInOutCubic(progress)
     return 1 - (1 - math.clamp(progress, 0, 1)) ^ 3
 end
 
---// BLUR EFFECT
+-- Blur effect
 local blur = Instance.new("BlurEffect")
 blur.Size = 0
 blur.Parent = Lighting
 
---// NOTIFICATIONS
+-- Notifications
 local function notify(title, text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -123,7 +144,11 @@ local function notify(title, text)
 end
 
 notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
---// ANIMATION & TARGETING
+
+-- subscribe to Waspire :)
+--// SNIPPET 2 - DASH LOGIC
+
+-- Anim + targeting
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
     local foundHumanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -138,27 +163,38 @@ local function getHumanoidAndAnimator()
 end
 
 local function playSideAnimation(isLeftDirection)
-    pcall(function() if sideAnimationTrack and sideAnimationTrack.IsPlaying then sideAnimationTrack:Stop() end end)
+    pcall(function()
+        if sideAnimationTrack and sideAnimationTrack.IsPlaying then
+            sideAnimationTrack:Stop()
+        end
+    end)
     sideAnimationTrack = nil
+
     local targetHumanoid, animator = getHumanoidAndAnimator()
     if targetHumanoid and animator then
         local animationId = isLeftDirection and leftAnimationId or rightAnimationId
         local animationInstance = Instance.new("Animation")
         animationInstance.Name = "CircularSideAnim"
         animationInstance.AnimationId = "rbxassetid://" .. tostring(animationId)
-        local success, loadedAnimation = pcall(function() return animator:LoadAnimation(animationInstance) end)
+
+        local success, loadedAnimation = pcall(function()
+            return animator:LoadAnimation(animationInstance)
+        end)
         if success and loadedAnimation then
             sideAnimationTrack = loadedAnimation
             loadedAnimation.Priority = Enum.AnimationPriority.Action
             pcall(function() loadedAnimation.Looped = false end)
             loadedAnimation:Play()
-            delay(0.6, function()
-                pcall(function() if loadedAnimation and loadedAnimation.IsPlaying then loadedAnimation:Stop() end end)
-                pcall(function() animationInstance:Destroy() end)
-            end)
-        else
-            pcall(function() animationInstance:Destroy() end)
         end
+
+        delay(0.7, function()
+            pcall(function()
+                if loadedAnimation and loadedAnimation.IsPlaying then
+                    loadedAnimation:Stop()
+                end
+            end)
+            pcall(function() animationInstance:Destroy() end)
+        end)
     end
 end
 
@@ -167,6 +203,7 @@ local function findNearestTarget(maxRange)
     local nearestTarget, nearestDistance = nil, math.huge
     if not HumanoidRootPart then return nil end
     local rootPosition = HumanoidRootPart.Position
+
     for _, player in pairs(PlayersService:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
             local playerHumanoid = player.Character:FindFirstChild("Humanoid")
@@ -179,6 +216,7 @@ local function findNearestTarget(maxRange)
             end
         end
     end
+
     for _, descendant in pairs(WorkspaceService:GetDescendants()) do
         if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") and not PlayersService:GetPlayerFromCharacter(descendant) then
             local npcHumanoid = descendant:FindFirstChild("Humanoid")
@@ -191,16 +229,18 @@ local function findNearestTarget(maxRange)
             end
         end
     end
+
     return nearestTarget, nearestDistance
 end
 
---// SLIDER CALCS (HARDCODED)
+-- Slider calcs (hardcoded)
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
-    return 1.5 + (0.12 - 1.5) * clampedValue
+    local baseMin = 1.0
+    local baseMax = 0.10
+    return baseMin + (baseMax - baseMin) * clampedValue
 end
 
--- FORCE 120° DASH
 local function calculateDashAngle(_degreesSliderValue)
     return 120
 end
@@ -209,10 +249,14 @@ local function calculateDashDistance(gapSliderValue)
     return 1 + 11 * (math.clamp(gapSliderValue or 14, 0, 100) / 100)
 end
 
---// HARDCODED SETTINGS
+-- Settings
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
-PlayersService.PlayerRemoving:Connect(function(removedPlayer) if lockedTargetPlayer == removedPlayer then lockedTargetPlayer = nil end end)
+PlayersService.PlayerRemoving:Connect(function(removedPlayer)
+    if lockedTargetPlayer == removedPlayer then
+        lockedTargetPlayer = nil
+    end
+end)
 
 local function getCurrentTarget()
     if lockedTargetPlayer then
@@ -221,7 +265,11 @@ local function getCurrentTarget()
             local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
             local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
             if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
-                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude > MAX_TARGET_RANGE then return nil else return targetCharacter end
+                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude > MAX_TARGET_RANGE then
+                    return nil
+                else
+                    return targetCharacter
+                end
             end
             lockedTargetPlayer = nil
         else
@@ -231,7 +279,7 @@ local function getCurrentTarget()
     return findNearestTarget(MAX_TARGET_RANGE)
 end
 
---// MOVEMENT & AIM
+-- Movement helpers
 local function aimCharacterAtTarget(targetPosition, lerpFactor)
     lerpFactor = lerpFactor or 0.7
     pcall(function()
@@ -239,12 +287,18 @@ local function aimCharacterAtTarget(targetPosition, lerpFactor)
         local characterLookVector = HumanoidRootPart.CFrame.LookVector
         local directionToTarget = targetPosition - characterPosition
         local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-        if horizontalDirection.Magnitude < 0.001 then horizontalDirection = Vector3.new(1, 0, 0) end
+        if horizontalDirection.Magnitude < 0.001 then
+            horizontalDirection = Vector3.new(1, 0, 0)
+        end
         local targetDirection = horizontalDirection.Unit
         local finalLookVector = Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z)
-        if finalLookVector.Magnitude < 0.001 then finalLookVector = Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z + 0.0001) end
+        if finalLookVector.Magnitude < 0.001 then
+            finalLookVector = Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z + 0.0001)
+        end
         local lerpedDirection = characterLookVector:Lerp(finalLookVector.Unit, lerpFactor)
-        if lerpedDirection.Magnitude < 0.001 then lerpedDirection = Vector3.new(finalLookVector.Unit.X, characterLookVector.Y, finalLookVector.Unit.Z) end
+        if lerpedDirection.Magnitude < 0.001 then
+            lerpedDirection = Vector3.new(finalLookVector.Unit.X, characterLookVector.Y, finalLookVector.Unit.Z)
+        end
         HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + lerpedDirection.Unit)
     end)
 end
@@ -254,20 +308,27 @@ local function performDashMovement(targetRootPart, dashSpeed)
     local attachment = Instance.new("Attachment")
     attachment.Name = "DashAttach"
     attachment.Parent = HumanoidRootPart
+
     local linearVelocity = Instance.new("LinearVelocity")
     linearVelocity.Name = "DashLinearVelocity"
     linearVelocity.Attachment0 = attachment
     linearVelocity.MaxForce = math.huge
     linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
     linearVelocity.Parent = HumanoidRootPart
-    local straightAnimationTrack, straightAnimationInstance = nil, nil
+
+    -- play straight dash animation + dash SFX
+    straightAnimationTrack = nil
+    local straightAnimationInstance = nil
+
     if straightAnimationId then
         local characterHumanoid, characterAnimator = getHumanoidAndAnimator()
         if characterHumanoid and characterAnimator then
             straightAnimationInstance = Instance.new("Animation")
             straightAnimationInstance.Name = "StraightDashAnim"
             straightAnimationInstance.AnimationId = "rbxassetid://" .. tostring(straightAnimationId)
-            local success, loadedAnim = pcall(function() return characterAnimator:LoadAnimation(straightAnimationInstance) end)
+            local success, loadedAnim = pcall(function()
+                return characterAnimator:LoadAnimation(straightAnimationInstance)
+            end)
             if success and loadedAnim then
                 loadedAnim.Priority = Enum.AnimationPriority.Movement
                 pcall(function() loadedAnim.Looped = false end)
@@ -278,8 +339,16 @@ local function performDashMovement(targetRootPart, dashSpeed)
             end
         end
     end
-    local hasReachedTarget, isActive = false, true
-    local heartbeatConnection = nil
+
+    pcall(function()
+        dashSound:Stop()
+        dashSound:Play()
+    end)
+
+    local hasReachedTarget = false
+    local isActive = true
+    local heartbeatConnection
+
     heartbeatConnection = RunService.Heartbeat:Connect(function()
         if isActive and targetRootPart and targetRootPart.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
             local targetPosition = targetRootPart.Position
@@ -287,30 +356,38 @@ local function performDashMovement(targetRootPart, dashSpeed)
             local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
             if horizontalDirection.Magnitude > TARGET_REACH_THRESHOLD then
                 linearVelocity.VectorVelocity = horizontalDirection.Unit * dashSpeed
-                pcall(function() if horizontalDirection.Magnitude > 0.001 then HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + horizontalDirection.Unit) end end)
-                pcall(function() aimCharacterAtTarget(targetPosition, 0.56) end)
+                pcall(function()
+                    if horizontalDirection.Magnitude > 0.001 then
+                        HumanoidRootPart.CFrame = CFrame.new(
+                            HumanoidRootPart.Position,
+                            HumanoidRootPart.Position + horizontalDirection.Unit
+                        )
+                    end
+                end)
+                pcall(function()
+                    aimCharacterAtTarget(targetPosition, 0.56)
+                end)
             else
                 hasReachedTarget = true
                 isActive = false
                 heartbeatConnection:Disconnect()
                 pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
-                pcall(function() if straightAnimationTrack and straightAnimationTrack.IsPlaying then straightAnimationTrack:Stop() end if straightAnimationInstance then straightAnimationInstance:Destroy() end end)
             end
         else
             isActive = false
             heartbeatConnection:Disconnect()
             pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
-            pcall(function() if straightAnimationTrack and straightAnimationTrack.IsPlaying then straightAnimationTrack:Stop() end if straightAnimationInstance then straightAnimationInstance:Destroy() end end)
         end
     end)
-    repeat task.wait() until hasReachedTarget or not (targetRootPart and targetRootPart.Parent and HumanoidRootPart and HumanoidRootPart.Parent)
+
+    -- do NOT force stop straightAnimation here, let it end naturally
 end
 
 local function smoothlyAimAtTarget(targetRootPart, duration)
     duration = duration or CAMERA_FOLLOW_DELAY
     if targetRootPart and targetRootPart.Parent then
         local startTime = tick()
-        local aimTweenConnection = nil
+        local aimTweenConnection
         aimTweenConnection = RunService.Heartbeat:Connect(function()
             if targetRootPart and targetRootPart.Parent then
                 local currentTime = tick()
@@ -318,16 +395,21 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
                 local easedProgress = 1 - (1 - progress) ^ math.max(1, FOLLOW_EASING_POWER)
                 local targetPosition = targetRootPart.Position
                 local targetVelocity = Vector3.new(0, 0, 0)
-                pcall(function() targetVelocity = targetRootPart:GetVelocity() or Vector3.new(0, 0, 0) end)
+                pcall(function()
+                    targetVelocity = targetRootPart:GetVelocity() or Vector3.new(0, 0, 0)
+                end)
                 local predictedPosition = targetPosition + Vector3.new(targetVelocity.X, 0, targetVelocity.Z) * VELOCITY_PREDICTION_FACTOR
                 pcall(function()
                     local characterPosition = HumanoidRootPart.Position
                     local characterLookVector = HumanoidRootPart.CFrame.LookVector
                     local directionToTarget = predictedPosition - characterPosition
                     local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-                    if horizontalDirection.Magnitude < 0.001 then horizontalDirection = Vector3.new(1, 0, 0) end
+                    if horizontalDirection.Magnitude < 0.001 then
+                        horizontalDirection = Vector3.new(1, 0, 0)
+                    end
                     local targetDirection = horizontalDirection.Unit
-                    local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
+                    local finalLookVector =
+                        characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
                     HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                 end)
                 if progress >= 1 then aimTweenConnection:Disconnect() end
@@ -350,49 +432,59 @@ local function communicateWithServer(communicationData)
     end)
 end
 
---// MAIN CIRCULAR DASH (GROUND-LEVEL AIR FIX + 120°)
+-- Main circular dash (ground fix + 120° + better anim end)
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     isDashing = true
+
     local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
     local originalAutoRotate = characterHumanoid and characterHumanoid.AutoRotate
     if characterHumanoid then
         isAutoRotateDisabled = true
         pcall(function() characterHumanoid.AutoRotate = false end)
     end
+
     local function restoreAutoRotate()
         if characterHumanoid and originalAutoRotate ~= nil then
             isAutoRotateDisabled = false
             pcall(function() characterHumanoid.AutoRotate = originalAutoRotate end)
         end
     end
-    
+
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
     local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
     local targetRoot = targetCharacter.HumanoidRootPart
-    
+
     if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
     end
-    
+
     if targetRoot and targetRoot.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
         local targetPosition = targetRoot.Position
         local characterPosition = HumanoidRootPart.Position
         local characterRightVector = HumanoidRootPart.CFrame.RightVector
         local directionToTarget = targetRoot.Position - HumanoidRootPart.Position
-        if directionToTarget.Magnitude < 0.001 then directionToTarget = HumanoidRootPart.CFrame.LookVector end
+        if directionToTarget.Magnitude < 0.001 then
+            directionToTarget = HumanoidRootPart.CFrame.LookVector
+        end
+
         local isLeftDirection = characterRightVector:Dot(directionToTarget.Unit) < 0
         playSideAnimation(isLeftDirection)
+
         local directionMultiplier = isLeftDirection and 1 or -1
         local angleToTarget = math.atan2(characterPosition.Z - targetPosition.Z, characterPosition.X - targetPosition.X)
         local horizontalDistance = (Vector3.new(characterPosition.X, 0, characterPosition.Z) - Vector3.new(targetPosition.X, 0, targetPosition.Z)).Magnitude
         local clampedDistance = math.clamp(horizontalDistance, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
+
         local startTime = tick()
-        local movementConnection = nil
-        local hasStartedAim, hasCompletedCircle, shouldEndDash, dashEnded = false, false, false, false
-        
+        local movementConnection
+        local hasStartedAim = false
+        local hasCompletedCircle = false
+        local shouldEndDash = false
+        local dashEnded = false
+
         local function startDashEndSequence()
             if not hasCompletedCircle then
                 hasCompletedCircle = true
@@ -400,19 +492,24 @@ local function performCircularDash(targetCharacter)
                     shouldEndDash = true
                     restoreAutoRotate()
                     lastButtonPressTime = tick()
-                    if dashEnded then isDashing = false end
+                    if dashEnded then
+                        isDashing = false
+                    end
                 end)
             end
         end
-        
+
         if m1ToggleEnabled then
             communicateWithServer({{Mobile = true, Goal = "LeftClick"}})
-            task.delay(0.05, function() communicateWithServer({{Goal = "LeftClickRelease", Mobile = true}}) end)
+            task.delay(0.05, function()
+                communicateWithServer({{Goal = "LeftClickRelease", Mobile = true}})
+            end)
         end
+
         if dashToggleEnabled then
             communicateWithServer({{Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"}})
         end
-        
+
         movementConnection = RunService.Heartbeat:Connect(function()
             local currentTime = tick()
             local progress = math.clamp((currentTime - startTime) / dashDuration, 0, 1)
@@ -420,35 +517,59 @@ local function performCircularDash(targetCharacter)
             local aimProgress = math.clamp(progress * 1.5, 0, 1)
             local currentRadius = clampedDistance + (dashDistance - clampedDistance) * easeInOutCubic(aimProgress)
             local clampedRadius = math.clamp(currentRadius, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
+
             local currentTargetPosition = targetRoot.Position
-            
-            -- Ground-level fix: keep your Y
             local playerGroundY = HumanoidRootPart.Position.Y
-            local circleX = currentTargetPosition.X + clampedRadius * math.cos(angleToTarget + directionMultiplier * dashAngleRad * easeInOutCubic(progress))
-            local circleZ = currentTargetPosition.Z + clampedRadius * math.sin(angleToTarget + directionMultiplier * dashAngleRad * easeInOutCubic(progress))
+
+            local currentAngle = angleToTarget + directionMultiplier * dashAngleRad * easeInOutCubic(progress)
+            local circleX = currentTargetPosition.X + clampedRadius * math.cos(currentAngle)
+            local circleZ = currentTargetPosition.Z + clampedRadius * math.sin(currentAngle)
             local newPosition = Vector3.new(circleX, playerGroundY, circleZ)
-            
-            if targetRoot then currentTargetPosition = targetRoot.Position or currentTargetPosition end
+
+            if targetRoot then
+                currentTargetPosition = targetRoot.Position or currentTargetPosition
+            end
+
             local angleToTargetPosition = math.atan2((currentTargetPosition - newPosition).Z, (currentTargetPosition - newPosition).X)
             local characterAngle = math.atan2(HumanoidRootPart.CFrame.LookVector.Z, HumanoidRootPart.CFrame.LookVector.X)
             local finalCharacterAngle = characterAngle + getAngleDifference(angleToTargetPosition, characterAngle) * DIRECTION_LERP_FACTOR
-            pcall(function() HumanoidRootPart.CFrame = CFrame.new(newPosition, newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle))) end)
-            
+
+            pcall(function()
+                HumanoidRootPart.CFrame = CFrame.new(
+                    newPosition,
+                    newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle))
+                )
+            end)
+
             if not hasStartedAim and CIRCLE_COMPLETION_THRESHOLD <= easedProgress then
                 hasStartedAim = true
-                pcall(function() smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY) end)
+                pcall(function()
+                    smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY)
+                end)
                 startDashEndSequence()
             end
+
             if progress >= 1 then
                 movementConnection:Disconnect()
-                pcall(function() if sideAnimationTrack and sideAnimationTrack.IsPlaying then sideAnimationTrack:Stop() end sideAnimationTrack = nil end)
+                pcall(function()
+                    if sideAnimationTrack and sideAnimationTrack.IsPlaying then
+                        sideAnimationTrack:Stop()
+                    end
+                    sideAnimationTrack = nil
+                end)
+
                 if not hasStartedAim then
                     hasStartedAim = true
-                    pcall(function() smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY) end)
+                    pcall(function()
+                        smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY)
+                    end)
                     startDashEndSequence()
                 end
+
                 dashEnded = true
-                if shouldEndDash then isDashing = false end
+                if shouldEndDash then
+                    isDashing = false
+                end
             end
         end)
     else
@@ -457,21 +578,26 @@ local function performCircularDash(targetCharacter)
     end
 end
 
---// E KEY KEYBIND
+-- E key
 InputService.InputBegan:Connect(function(inp, gp)
     if gp or isDashing or isCharacterDisabled() then return end
     if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == Enum.KeyCode.E then
         local target = getCurrentTarget()
-        if target then performCircularDash(target) end
+        if target then
+            performCircularDash(target)
+        end
     end
 end)
---// GUI CREATION
+
+-- subscribe to Waspire :)
+--// SNIPPET 3 - GUI + RED BUTTON
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
---// SOUNDS
+-- Sounds
 local uiClickSound = Instance.new("Sound")
 uiClickSound.Name = "UIClickSound"
 uiClickSound.SoundId = "rbxassetid://6042053626"
@@ -490,7 +616,7 @@ loadSound.SoundId = "rbxassetid://87437544236708"
 loadSound.Volume = 1
 loadSound.Parent = gui
 
---// MAIN WINDOW
+-- Main frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 380, 0, 140)
@@ -577,7 +703,7 @@ authorLabel.TextXAlignment = Enum.TextXAlignment.Left
 authorLabel.TextTransparency = 0.28
 authorLabel.Parent = headerFrame
 
---// CLOSE BUTTON
+-- Close / minimize
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 35, 0, 35)
 closeBtn.Position = UDim2.new(1, -45, 0, 7)
@@ -591,7 +717,6 @@ closeBtn.Style = Enum.ButtonStyle.Custom
 closeBtn.Parent = mainFrame
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
---// MINIMIZE BUTTON
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 35, 0, 35)
 minimizeBtn.Position = UDim2.new(1, -85, 0, 7)
@@ -605,7 +730,7 @@ minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
---// SETTINGS BUTTON
+-- Settings / social
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Size = UDim2.new(0, 36, 0, 36)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
@@ -619,7 +744,6 @@ settingsBtn.Style = Enum.ButtonStyle.Custom
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
---// DISCORD BUTTON
 local discordBtn = Instance.new("TextButton")
 discordBtn.Name = "DiscordButton"
 discordBtn.Size = UDim2.new(0, 100, 0, 32)
@@ -640,7 +764,6 @@ discordGradient.Color = ColorSequence.new({
 })
 discordGradient.Rotation = 90
 
---// YOUTUBE BUTTON
 local ytBtn = Instance.new("TextButton")
 ytBtn.Name = "YouTubeButton"
 ytBtn.Size = UDim2.new(0, 100, 0, 32)
@@ -661,7 +784,7 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
---// SETTINGS OVERLAY WITH KEYBIND INFO
+-- Settings overlay with keybind info
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
 settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
@@ -705,7 +828,6 @@ settingsCloseBtn.Style = Enum.ButtonStyle.Custom
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
 
--- Keybinds Info block (PC only)
 local keybindFrame = Instance.new("Frame")
 keybindFrame.Size = UDim2.new(1, -32, 0, 110)
 keybindFrame.Position = UDim2.new(0, 16, 0, 60)
@@ -740,14 +862,13 @@ local keyInfo2 = Instance.new("TextLabel")
 keyInfo2.Size = UDim2.new(1, -20, 0, 24)
 keyInfo2.Position = UDim2.new(0, 10, 0, 66)
 keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "PC GUI: Use buttons"
+keyInfo2.Text = "PC GUI: Use on-screen buttons"
 keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
 keyInfo2.TextSize = 15
 keyInfo2.Font = Enum.Font.Gotham
 keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
 keyInfo2.Parent = keybindFrame
 
--- Simple text under keybind frame
 local comingSoon = Instance.new("TextLabel")
 comingSoon.Size = UDim2.new(1, 0, 0, 30)
 comingSoon.Position = UDim2.new(0, 0, 0, 180)
@@ -759,7 +880,7 @@ comingSoon.Font = Enum.Font.GothamBold
 comingSoon.TextXAlignment = Enum.TextXAlignment.Center
 comingSoon.Parent = settingsOverlay
 
---// OPEN/LOCK BUTTONS
+-- Open / lock buttons
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
 openButton.Size = UDim2.new(0, 90, 0, 34)
@@ -793,7 +914,7 @@ lockButton.Parent = gui
 lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
---// RED DASH BUTTON (FRAME, CLICKABLE ALWAYS)
+-- Red dash button
 local dashBtn = Instance.new("Frame")
 dashBtn.Name = "DashButton_Final"
 dashBtn.Size = UDim2.new(0, 110, 0, 110)
@@ -819,7 +940,7 @@ dashIcon.Position = UDim2.new(0.5, -47.5, 0.5, -47.5)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
 
---// NOTIFY FUNCTION (GUI)
+-- Notify helper
 local function notifyGui(text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -830,7 +951,7 @@ local function notifyGui(text)
     end)
 end
 
---// BUTTON LOGIC
+-- Logic
 lockButton.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     dashButtonLocked = not dashButtonLocked
@@ -838,6 +959,7 @@ lockButton.MouseButton1Click:Connect(function()
     mainFrame.Draggable = not dashButtonLocked
     openButton.Draggable = not dashButtonLocked
     lockButton.Draggable = not dashButtonLocked
+
     if dashButtonLocked then
         lockButton.Text = "🔒 Locked"
         notifyGui("Dash button & GUI locked in place.")
@@ -901,7 +1023,9 @@ settingsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     local t = TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 1})
     t:Play()
-    t.Completed:Connect(function() settingsOverlay.Visible = false end)
+    t.Completed:Connect(function()
+        settingsOverlay.Visible = false
+    end)
 end)
 
 discordBtn.MouseButton1Click:Connect(function()
@@ -924,7 +1048,7 @@ ytBtn.MouseButton1Click:Connect(function()
     end
 end)
 
---// INITIAL SHOW
+-- Initial show
 mainFrame.Visible = true
 TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
 TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
@@ -934,4 +1058,6 @@ task.delay(0.1, function()
     loadSound:Play()
 end)
 
-print("subscribe to waspire :)")
+print("subscribe to Waspire :)")
+
+-- subscribe to Waspire :)
