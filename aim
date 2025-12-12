@@ -1,4 +1,4 @@
--- PART 1/2: M1 Reset Tech v1.0 - Core functionality and notification system
+-- PART 1/2: M1 Reset Tech v1.0 - Core functionality with Roblox notifications
 -- All settings hardcoded - Copy this entire block and the next one into your executor
 
 local vu1 = game:GetService("Players").LocalPlayer
@@ -6,6 +6,7 @@ local vu2 = game:GetService("UserInputService")
 local vu3 = game:GetService("TweenService")
 local vu4 = game:GetService("RunService")
 local v5 = game:GetService("Workspace")
+local vu7 = game:GetService("StarterGui")
 game:GetService("ReplicatedStorage")
 local vu6 = nil
 
@@ -13,144 +14,77 @@ pcall(function()
     vu6 = game:GetService("VirtualInputManager")
 end)
 if not vu6 then
-    local v7 = rawget(_G, "VirtualInputManager")
-    if v7 then
-        vu6 = v7
+    local v8 = rawget(_G, "VirtualInputManager")
+    if v8 then
+        vu6 = v8
     else
-        local v8 = rawget(_G, "syn") and rawget(_G, "syn").virtual_input
-        if v8 then
-            vu6 = v8
+        local v9 = rawget(_G, "syn") and rawget(_G, "syn").virtual_input
+        if v9 then
+            vu6 = v9
         else
             vu6 = rawget(_G, "virtualinputmanager")
         end
     end
 end
 
-local vu9 = {
+local vu10 = {
     M1_RESET = Enum.KeyCode.G  -- Changed from R to G as requested
 }
 
 getgenv().connections = getgenv().connections or {}
 if type(getgenv().connections) == "table" then
-    local v10, v11, v12 = ipairs(getgenv().connections)
+    local v11, v12, v13 = ipairs(getgenv().connections)
     while true do
-        local vu13
-        v12, vu13 = v10(v11, v12)
-        if v12 == nil then break end
+        local vu14
+        v13, vu14 = v11(v12, v13)
+        if v13 == nil then break end
         pcall(function()
-            if vu13 and vu13.Disconnect then vu13:Disconnect() end
+            if vu14 and vu14.Disconnect then vu14:Disconnect() end
         end)
     end
 end
 getgenv().connections = {}
 
--- Notification System (Hardcoded - shows on script execution)
-local function showNotification(title, desc, discordLink)
-    local notif = Instance.new("ScreenGui")
-    notif.Name = "M1ResetNotification"
-    notif.ResetOnSpawn = false
-    notif.IgnoreGuiInset = true
-    notif.Parent = vu1:WaitForChild("PlayerGui")
-    
-    local frame = Instance.new("Frame", notif)
-    frame.Size = UDim2.new(0, 350, 0, 120)
-    frame.Position = UDim2.new(0.5, -175, 0.3, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    frame.BorderSizePixel = 0
-    local corner = Instance.new("UICorner", frame)
-    corner.CornerRadius = UDim.new(0, 12)
-    local stroke = Instance.new("UIStroke", frame)
-    stroke.Color = Color3.fromRGB(255, 255, 0)
-    stroke.Thickness = 2
-    
-    local titleLabel = Instance.new("TextLabel", frame)
-    titleLabel.Size = UDim2.new(1, -20, 0, 40)
-    titleLabel.Position = UDim2.new(0, 10, 0, 10)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 18
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local descLabel = Instance.new("TextLabel", frame)
-    descLabel.Size = UDim2.new(1, -20, 0, 40)
-    descLabel.Position = UDim2.new(0, 10, 0, 50)
-    descLabel.BackgroundTransparency = 1
-    descLabel.Text = desc
-    descLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    descLabel.Font = Enum.Font.Gotham
-    descLabel.TextSize = 14
-    descLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    -- Copy to clipboard functionality
-    if discordLink then
-        local copyBtn = Instance.new("TextButton", frame)
-        copyBtn.Size = UDim2.new(0, 100, 0, 30)
-        copyBtn.Position = UDim2.new(1, -110, 1, -40)
-        copyBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-        copyBtn.Text = "Copy Link"
-        copyBtn.TextColor3 = Color3.new(1,1,1)
-        copyBtn.Font = Enum.Font.GothamBold
-        copyBtn.TextSize = 12
-        local btnCorner = Instance.new("UICorner", copyBtn)
-        btnCorner.CornerRadius = UDim.new(0, 6)
-        
-        copyBtn.MouseButton1Click:Connect(function()
-            if vu6 and vu6.SendKeyEvent then
-                setclipboard(discordLink)
-                copyBtn.Text = "Copied!"
-                copyBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-                wait(1)
-                copyBtn.Text = "Copy Link"
-                copyBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-            end
-        end)
-    end
-    
-    -- Animation
-    frame.Size = UDim2.new(0, 0, 0, 0)
-    vu3:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 350, 0, 120)
-    }):Play()
-    
-    task.delay(5, function()
-        vu3:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 0, 0, 0)
-        }):Play()
-        task.wait(0.3)
-        notif:Destroy()
+-- Roblox Native Notifications (using StarterGui:SetCore)
+local function showRobloxNotification(title, text)
+    pcall(function()
+        vu7:SetCore("SendNotification", {
+            Title = title;
+            Text = text;
+            Duration = 5;
+            Button1 = "OK"
+        })
     end)
 end
 
--- Show notifications on script execution
+-- Show notifications on script execution using Roblox system
 task.spawn(function()
     wait(0.5)
-    showNotification("M1 Reset Tech v1.0", "Join the discord for more updates & early access!", "https://discord.gg/PA2sUXezDD")
+    showRobloxNotification("M1 Reset Tech v1.0", "Join the discord for more updates & early access!\nhttps://discord.gg/PA2sUXezDD")
     wait(2)
-    showNotification("Created by CPS Network", "Keybinds: G")
+    showRobloxNotification("Created by CPS Network", "Keybinds: G")
 end)
 
-local function vu21(p14)
-    local v15 = p14 or 2
+local function vu21(p15)
+    local v16 = p15 or 2
     if type(gethui) == "function" then
-        local v16, v17 = pcall(gethui)
-        if v16 and v17 then return v17 end
+        local v17, v18 = pcall(gethui)
+        if v17 and v18 then return v18 end
     end
     if vu1 then
-        local v18 = tick()
-        while tick() - v18 < v15 do
+        local v19 = tick()
+        while tick() - v19 < v16 do
             if vu1:FindFirstChild("PlayerGui") then return vu1.PlayerGui end
             task.wait(0.05)
         end
         if vu1:FindFirstChild("PlayerGui") then return vu1.PlayerGui end
     end
-    local v19, v20 = pcall(function() return game:GetService("CoreGui") end)
-    return v19 and v20 and v20 or game:GetService("StarterGui")
+    local v20, v21 = pcall(function() return game:GetService("CoreGui") end)
+    return v20 and v21 and v21 or game:GetService("StarterGui")
 end
 -- END OF PART 1/2 - Continue to PART 2/2 for complete script [file:1]
--- PART 2/2: M1 Reset Tech v1.0 - GUI and core M1 Reset functionality
--- Paste this immediately after PART 1/2 - All settings hardcoded, new button design implemented
+-- PART 2/2: M1 Reset Tech v1.0 - Smaller draggable Golden-Black button
+-- Paste this immediately after PART 1/2 - All requested changes implemented
 
 local vu22 = vu21(3)
 pcall(function()
@@ -279,7 +213,7 @@ local function vu91()
     end)
 end
 
--- NEW GUI: Yellow-black gradient button with curved borders (16:9 aspect ratio)
+-- NEW GUI: Smaller Golden-Black gradient button (draggable, fade-in only)
 local vu93 = Instance.new("ScreenGui")
 vu93.Name = "M1ResetCPS"
 vu93.ResetOnSpawn = false
@@ -289,57 +223,51 @@ vu93.ZIndexBehavior = Enum.ZIndexBehavior.Global
 vu93.Parent = vu21(2)
 v30(vu93)
 
--- Main button container (16:9 aspect ratio)
+-- Smaller main button container (16:9 aspect ratio - much smaller)
 local mainBtn = Instance.new("Frame", vu93)
 mainBtn.Name = "M1ResetButton"
-mainBtn.Size = UDim2.new(0, 288, 0, 162)  -- 16:9 ratio (288x162)
-mainBtn.Position = UDim2.new(0.5, -144, 0.5, -81)
-mainBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 0)  -- Yellow base
+mainBtn.Size = UDim2.new(0, 144, 0, 81)  -- Smaller 16:9 (144x81)
+mainBtn.Position = UDim2.new(0.5, -72, 0.5, -40.5)
+mainBtn.BackgroundColor3 = Color3.fromRGB(212, 175, 55)  -- Golden base
 mainBtn.BorderSizePixel = 0
+mainBtn.BackgroundTransparency = 1  -- Start invisible for fade-in
 
--- Yellow-black gradient
+-- Golden-Black gradient
 local gradient = Instance.new("UIGradient", mainBtn)
 gradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 0)),   -- Top: Yellow
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))        -- Bottom: Black
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 215, 0)),    -- Top: Gold
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))         -- Bottom: Black
 }
 gradient.Rotation = 45
 
--- Curved borders for main button
+-- Curved borders for main button (no white stroke)
 local mainCorner = Instance.new("UICorner", mainBtn)
-mainCorner.CornerRadius = UDim.new(0, 24)
-local mainStroke = Instance.new("UIStroke", mainBtn)
-mainStroke.Color = Color3.fromRGB(255, 255, 255)
-mainStroke.Thickness = 2
+mainCorner.CornerRadius = UDim.new(0, 12)
 
 -- Smaller black button overlay
 local topBtn = Instance.new("TextButton", mainBtn)
-topBtn.Size = UDim2.new(1, -16, 1, -16)  -- Slightly smaller
-topBtn.Position = UDim2.new(0, 8, 0, 8)
+topBtn.Size = UDim2.new(1, -8, 1, -8)  -- Slightly smaller
+topBtn.Position = UDim2.new(0, 4, 0, 4)
 topBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 topBtn.Text = "M1 Reset"
 topBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 topBtn.Font = Enum.Font.GothamBold
-topBtn.TextSize = 24
+topBtn.TextSize = 16
 topBtn.BorderSizePixel = 0
+topBtn.BackgroundTransparency = 1  -- Start invisible for fade-in
 
 -- Curved borders for top button
 local topCorner = Instance.new("UICorner", topBtn)
-topCorner.CornerRadius = UDim.new(0, 20)
-local topStroke = Instance.new("UIStroke", topBtn)
-topStroke.Color = Color3.fromRGB(255, 255, 0)
-topStroke.Thickness = 2
+topCorner.CornerRadius = UDim.new(0, 10)
 
--- Hover animation
-topBtn.MouseEnter:Connect(function()
-    vu3:Create(topBtn, TweenInfo.new(0.2), {Size = UDim2.new(1, -12, 1, -12)}):Play()
-    vu3:Create(mainBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 292, 0, 166)}):Play()
-end)
-
-topBtn.MouseLeave:Connect(function()
-    vu3:Create(topBtn, TweenInfo.new(0.2), {Size = UDim2.new(1, -16, 1, -16)}):Play()
-    vu3:Create(mainBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 288, 0, 162)}):Play()
-end)
+-- FADE-IN animation only (no other animations)
+task.wait(1)
+vu3:Create(mainBtn, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    BackgroundTransparency = 0
+}):Play()
+vu3:Create(topBtn, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    BackgroundTransparency = 0
+}):Play()
 
 -- Button click triggers M1 Reset
 topBtn.MouseButton1Click:Connect(function()
@@ -373,19 +301,15 @@ vu2.InputEnded:Connect(function(input)
 end)
 
 -- Keybind G support
-local keybindConn = vu2.InputBegan:Connect(function(input)
-    if input.KeyCode == vu9.M1_RESET then
+local keybindConn = vu2.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if vu2:GetFocusedTextBox() then return end
+    if input.KeyCode == vu10.M1_RESET then
         vu91()
     end
 end)
 
 table.insert(getgenv().connections, keybindConn)
 
--- Initial entrance animation
-mainBtn.Size = UDim2.new(0, 0, 0, 0)
-vu3:Create(mainBtn, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.new(0, 288, 0, 162)
-}):Play()
-
-print("M1 Reset Tech v1.0 loaded! Press G or click the yellow button. Notifications shown.[file:1]")
--- END OF PART 2/2 - Full script complete! All features implemented as requested [file:1]
+print("M1 Reset Tech v1.0 loaded! Press G or drag the small golden button.[file:1]")
+-- END OF PART 2/2 - Full script complete! Roblox notifications, smaller draggable button, golden gradient, fade-in only [file:1]
