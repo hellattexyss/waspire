@@ -57,12 +57,17 @@ local straightAnimationId = currentGameAnimations.Straight
 -- Constants
 local MAX_TARGET_RANGE = 40
 local MIN_DASH_DISTANCE = 1.2
-local MAX_DASH_DISTANCE = 60
+local MAX_DASH_DISTANCE = 3 -- LIMITED TO 3 STUDS
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
 
--- Increased dash speed
-local DASH_SPEED = 180
+-- INCREASED DASH SPEED
+local DASH_SPEED = 250 -- BUMPED UP FROM 180
+
+-- COOLDOWN TRACKING
+local DASH_COOLDOWN = 2.5
+local lastDashTime = 0
+local dashCooldownNotificationActive = false
 
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
@@ -78,6 +83,10 @@ local lastButtonPressTime = -math.huge
 
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
+
+-- RED CHAM EFFECT STATE
+local chamParts = {}
+local chamActive = false
 
 -- Dash SFX (non-button)
 local dashSound = Instance.new("Sound")
@@ -132,6 +141,111 @@ local blur = Instance.new("BlurEffect")
 blur.Size = 0
 blur.Parent = Lighting
 
+-- COOLDOWN NOTIFICATION SYSTEM
+local function showCooldownNotification()
+    if dashCooldownNotificationActive then return end
+    dashCooldownNotificationActive = true
+    
+    local remainingTime = math.ceil(DASH_COOLDOWN - (tick() - lastDashTime))
+    
+    local function updateNotification()
+        local timeLeft = math.ceil(DASH_COOLDOWN - (tick() - lastDashTime))
+        if timeLeft > 0 then
+            pcall(function()
+                StarterGui:SetCore("SendNotification", {
+                    Title = "⏱ Dash Cooldown",
+                    Text = "Ready in: " .. tostring(timeLeft) .. "s",
+                    Duration = 0.5,
+                })
+            end)
+            task.delay(0.5, updateNotification)
+        else
+            dashCooldownNotificationActive = false
+            pcall(function()
+                StarterGui:SetCore("SendNotification", {
+                    Title = "✓ Dash Ready",
+                    Text = "You can dash again!",
+                    Duration = 1,
+                })
+            end)
+        end
+    end
+    
+    updateNotification()
+end
+
+-- RED CHAM EFFECT SYSTEM
+local function applyRedChamEffect()
+    if chamActive then return end
+    chamActive = true
+    chamParts = {}
+    
+    for _, part in pairs(Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table.insert(chamParts, {
+                part = part,
+                originalColor = part.Color,
+                originalMaterial = part.Material
+            })
+        end
+    end
+end
+
+local function removeRedChamEffect()
+    chamActive = false
+    for _, data in pairs(chamParts) do
+        pcall(function()
+            if data.part and data.part.Parent then
+                data.part.Color = data.originalColor
+                data.part.Material = data.originalMaterial
+            end
+        end)
+    end
+    chamParts = {}
+end
+
+local function fadeCharacterRed(duration)
+    if not Character or not Character.Parent then return end
+    
+    applyRedChamEffect()
+    
+    local startTime = tick()
+    local fadeConnection
+    
+    fadeConnection = RunService.RenderStepped:Connect(function()
+        if not Character or not Character.Parent then
+            fadeConnection:Disconnect()
+            removeRedChamEffect()
+            return
+        end
+        
+        local elapsed = tick() - startTime
+        local progress = math.clamp(elapsed / duration, 0, 1)
+        
+        for _, data in pairs(chamParts) do
+            pcall(function()
+                if data.part and data.part.Parent then
+                    -- Fade in to red
+                    local fadeIn = progress <= 0.5
+                    local fadeProg = fadeIn and (progress / 0.5) or ((progress - 0.5) / 0.5)
+                    
+                    if fadeIn then
+                        data.part.Color = data.originalColor:Lerp(Color3.fromRGB(255, 0, 0), fadeProg)
+                    else
+                        data.part.Color = Color3.fromRGB(255, 0, 0):Lerp(data.originalColor, fadeProg)
+                    end
+                    data.part.Material = Enum.Material.SmoothPlastic
+                end
+            end)
+        end
+        
+        if progress >= 1 then
+            fadeConnection:Disconnect()
+            removeRedChamEffect()
+        end
+    end)
+end
+
 -- Notifications
 local function notify(title, text)
     pcall(function()
@@ -143,7 +257,7 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
+notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button!")
 
 -- subscribe to Waspire :)
 --// SNIPPET 2 - DASH LOGIC
@@ -316,7 +430,6 @@ local function performDashMovement(targetRootPart, dashSpeed)
     linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
     linearVelocity.Parent = HumanoidRootPart
 
-    -- play straight dash animation + dash SFX
     straightAnimationTrack = nil
     local straightAnimationInstance = nil
 
@@ -379,8 +492,6 @@ local function performDashMovement(targetRootPart, dashSpeed)
             pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
         end
     end)
-
-    -- do NOT force stop straightAnimation here, let it end naturally
 end
 
 local function smoothlyAimAtTarget(targetRootPart, duration)
@@ -434,8 +545,19 @@ end
 
 -- Main circular dash (ground fix + 120° + better anim end)
 local function performCircularDash(targetCharacter)
-    if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
+    if isDashing or (tick() - lastDashTime) < DASH_COOLDOWN then
+        showCooldownNotification()
+        return
+    end
+    if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     isDashing = true
+    lastDashTime = tick()
+
+    -- APPLY RED CHAM EFFECT
+    local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
+    task.spawn(function()
+        fadeCharacterRed(dashDuration + 0.3)
+    end)
 
     local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
     local originalAutoRotate = characterHumanoid and characterHumanoid.AutoRotate
@@ -451,7 +573,6 @@ local function performCircularDash(targetCharacter)
         end
     end
 
-    local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
     local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
@@ -491,7 +612,6 @@ local function performCircularDash(targetCharacter)
                 task.delay(CAMERA_FOLLOW_DELAY, function()
                     shouldEndDash = true
                     restoreAutoRotate()
-                    lastButtonPressTime = tick()
                     if dashEnded then
                         isDashing = false
                     end
@@ -589,7 +709,7 @@ InputService.InputBegan:Connect(function(inp, gp)
     end
 end)
 
--- subscribe to Waspire :)
+-- subscribe to Waspire :) | SNIPPET 2 COMPLETE - COOLDOWN + RED EFFECT INTEGRATED
 --// SNIPPET 3 - GUI + RED BUTTON
 
 local gui = Instance.new("ScreenGui")
@@ -684,7 +804,7 @@ versionLabel.Size = UDim2.new(0, 55, 0, 24)
 versionLabel.Position = UDim2.new(0, 215, 0, 13)
 versionLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 versionLabel.BorderSizePixel = 0
-versionLabel.Text = "v1.0"
+versionLabel.Text = "v1.1"
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextSize = 13
 versionLabel.Font = Enum.Font.GothamBold
@@ -695,7 +815,7 @@ local authorLabel = Instance.new("TextLabel")
 authorLabel.Size = UDim2.new(1, -40, 0, 17)
 authorLabel.Position = UDim2.new(0, 20, 0, 32)
 authorLabel.BackgroundTransparency = 1
-authorLabel.Text = "by CPS Network"
+authorLabel.Text = "by CPS Network | UPGRADED"
 authorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 authorLabel.TextSize = 13
 authorLabel.Font = Enum.Font.GothamMedium
@@ -873,9 +993,9 @@ local comingSoon = Instance.new("TextLabel")
 comingSoon.Size = UDim2.new(1, 0, 0, 30)
 comingSoon.Position = UDim2.new(0, 0, 0, 180)
 comingSoon.BackgroundTransparency = 1
-comingSoon.Text = "More settings coming soon..."
-comingSoon.TextColor3 = Color3.fromRGB(255, 60, 60)
-comingSoon.TextSize = 16
+comingSoon.Text = "✨ Speed ↑ | Distance: 3 | Cooldown Notify ✨"
+comingSoon.TextColor3 = Color3.fromRGB(100, 200, 100)
+comingSoon.TextSize = 14
 comingSoon.Font = Enum.Font.GothamBold
 comingSoon.TextXAlignment = Enum.TextXAlignment.Center
 comingSoon.Parent = settingsOverlay
@@ -1060,5 +1180,4 @@ end)
 
 print("subscribe to Waspire :)")
 
--- subscribe to Waspire :)
-
+-- SNIPPET 3 COMPLETE - ✅ DASH SPEED 250 ✅ DISTANCE 3 STUDS ✅ COOLDOWN NOTIFICATIONS ✅ RED CHAM EFFECT (FADE IN/OUT)
