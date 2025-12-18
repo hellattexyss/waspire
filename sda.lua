@@ -1140,7 +1140,7 @@ end)
 discordBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     if setclipboard then
-        setclipboard("https://discord.gg/cpshub")
+        setclipboard("https://discord.gg/YFf3rdXbUf")
         notifyGui("Discord invite copied to clipboard.")
     else
         notifyGui("Discord: https://discord.gg/YFf3rdXbUf")
@@ -1171,3 +1171,4 @@ end)
 print("subscribe to Waspire :)")
 
 -- ✅ SNIPPET 3 COMPLETE - SIZE CHANGER WORKING ✅ KEYBIND CHANGER WORKING ✅ VERSION 1.0.1 ✅
+
