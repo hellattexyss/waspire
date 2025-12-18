@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + SERVICES
+--// SNIPPET 1 - CORE SETUP
 
 -- Cleanup old GUIs
 pcall(function()
@@ -27,7 +27,7 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:FindFirstChildOfClass("Humanoid")
 
--- CONFIGURABLE GLOBALS
+-- CONFIGURABLE GLOBALS - CHANGED: 1.5s COOLDOWN
 _G.dashButtonSize = 90
 _G.dashKeybind = Enum.KeyCode.E
 _G.dashCooldown = 1.5
@@ -66,7 +66,10 @@ local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
+
+-- Increased dash speed
 local DASH_SPEED = 180
+
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
@@ -78,10 +81,11 @@ local isDashing = false
 local sideAnimationTrack = nil
 local straightAnimationTrack = nil
 local lastButtonPressTime = -math.huge
+
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
 
--- Dash SFX
+-- Dash SFX (non-button)
 local dashSound = Instance.new("Sound")
 dashSound.Name = "DashSFX"
 dashSound.SoundId = "rbxassetid://3084314259"
@@ -89,7 +93,7 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- RED CHAM EFFECT
+-- RED CHAM EFFECT FOR ME (PLAYER) DURING DASH - CHANGED: ZINDEX 999 TO RENDER ABOVE CLOTHES
 local function applyRedChamEffectToPlayer(duration)
     duration = duration or 1.0
     for _, part in pairs(Character:GetDescendants()) do
@@ -98,6 +102,7 @@ local function applyRedChamEffectToPlayer(duration)
             local originalZIndex = part.ZIndex
             
             part.ZIndex = 999
+            
             TweenService:Create(part, TweenInfo.new(0.1), {Color = Color3.fromRGB(255, 0, 0)}):Play()
             
             task.delay(duration, function()
@@ -106,7 +111,9 @@ local function applyRedChamEffectToPlayer(duration)
                     t:Play()
                     t.Completed:Connect(function()
                         if part then
-                            pcall(function() part.ZIndex = originalZIndex end)
+                            pcall(function()
+                                part.ZIndex = originalZIndex
+                            end)
                         end
                     end)
                 end
@@ -171,9 +178,12 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v1.5", "Loading...")
+notify("Side Dash Assist v1.5", "Loaded! Press E or click the red dash button")
+
+-- subscribe to Waspire :)
 --// SNIPPET 2 - DASH LOGIC
 
+-- Anim + targeting
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
     local foundHumanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -258,6 +268,7 @@ local function findNearestTarget(maxRange)
     return nearestTarget, nearestDistance
 end
 
+-- Slider calcs - CHANGED: NOW USES _G.dashDistance
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
@@ -273,6 +284,7 @@ local function calculateDashDistance(gapSliderValue)
     return _G.dashDistance
 end
 
+-- Settings
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
 PlayersService.PlayerRemoving:Connect(function(removedPlayer)
@@ -302,6 +314,7 @@ local function getCurrentTarget()
     return findNearestTarget(MAX_TARGET_RANGE)
 end
 
+-- Movement helpers
 local function aimCharacterAtTarget(targetPosition, lerpFactor)
     lerpFactor = lerpFactor or 0.7
     pcall(function()
@@ -366,6 +379,7 @@ local function performDashMovement(targetRootPart, dashSpeed)
         dashSound:Play()
     end)
 
+    local hasReachedTarget = false
     local isActive = true
     local heartbeatConnection
 
@@ -388,6 +402,7 @@ local function performDashMovement(targetRootPart, dashSpeed)
                     aimCharacterAtTarget(targetPosition, 0.56)
                 end)
             else
+                hasReachedTarget = true
                 isActive = false
                 heartbeatConnection:Disconnect()
                 pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
@@ -425,7 +440,8 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
                         horizontalDirection = Vector3.new(1, 0, 0)
                     end
                     local targetDirection = horizontalDirection.Unit
-                    local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
+                    local finalLookVector =
+                        characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
                     HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                 end)
                 if progress >= 1 then aimTweenConnection:Disconnect() end
@@ -448,14 +464,16 @@ local function communicateWithServer(communicationData)
     end)
 end
 
+-- Main circular dash - CHANGED: ADDED 1.5s COOLDOWN CHECK + RED CHAM ON ME
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     
+    -- COOLDOWN CHECK - 1.5 SECONDS
     local currentTime = tick()
     local timeSinceLastDash = currentTime - lastButtonPressTime
     if timeSinceLastDash < _G.dashCooldown then
         local remainingMs = math.ceil((_G.dashCooldown - timeSinceLastDash) * 1000)
-        notify("Cooldown", "Wait " .. remainingMs .. "ms")
+        notify("Cooldown", "Wait " .. remainingMs .. "ms before next dash")
         return
     end
     
@@ -482,6 +500,7 @@ local function performCircularDash(targetCharacter)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
     local targetRoot = targetCharacter.HumanoidRootPart
 
+    -- APPLY RED CHAM TO ME FOR DASH DURATION
     applyRedChamEffectToPlayer(dashDuration + CAMERA_FOLLOW_DELAY)
 
     if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
@@ -602,6 +621,7 @@ local function performCircularDash(targetCharacter)
     end
 end
 
+-- E key or CUSTOM KEYBIND
 InputService.InputBegan:Connect(function(inp, gp)
     if gp or isDashing or isCharacterDisabled() then return end
     if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _G.dashKeybind then
@@ -611,14 +631,16 @@ InputService.InputBegan:Connect(function(inp, gp)
         end
     end
 end)
---// SNIPPET 3 - GUI CREATION + HELPER FUNCTIONS
+
+-- subscribe to Waspire :)
+--// SNIPPET 3 - GUI + SMALLER OVERLAYS
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- UI Sounds
+-- Sounds
 local uiClickSound = Instance.new("Sound")
 uiClickSound.Name = "UIClickSound"
 uiClickSound.SoundId = "rbxassetid://6042053626"
@@ -631,61 +653,11 @@ dashClickSound.SoundId = "rbxassetid://9080070218"
 dashClickSound.Volume = 1
 dashClickSound.Parent = gui
 
--- NOTIFY GUI HELPER (MUST BE DEFINED BEFORE GUI BUTTONS)
-local function notifyGui(text)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Side Dash Assist",
-            Text = text,
-            Duration = 2,
-        })
-    end)
-end
-
--- APPLY FUNCTIONS (MUST BE DEFINED BEFORE BUTTONS USE THEM)
-local function applyButtonSize(newSize)
-    local sizeNum = tonumber(newSize)
-    if not sizeNum or sizeNum < 50 or sizeNum > 150 then
-        notifyGui("Size must be between 50-150!")
-        return false
-    end
-    _G.dashButtonSize = sizeNum
-    dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
-    dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
-    dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
-    dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
-    notifyGui("Button size set to " .. sizeNum)
-    return true
-end
-
-local function applyDashDistance(newDistance)
-    local distNum = tonumber(newDistance)
-    if not distNum or distNum < 1 or distNum > 60 then
-        notifyGui("Distance must be between 1-60 studs!")
-        return false
-    end
-    _G.dashDistance = distNum
-    notifyGui("Dash distance set to " .. distNum .. " studs")
-    return true
-end
-
-local function applyKeybind(keyName)
-    local keyMap = {
-        ["E"] = Enum.KeyCode.E, ["Q"] = Enum.KeyCode.Q, ["R"] = Enum.KeyCode.R,
-        ["X"] = Enum.KeyCode.X, ["C"] = Enum.KeyCode.C, ["V"] = Enum.KeyCode.V,
-        ["F"] = Enum.KeyCode.F, ["G"] = Enum.KeyCode.G, ["Z"] = Enum.KeyCode.Z,
-        ["T"] = Enum.KeyCode.T, ["Y"] = Enum.KeyCode.Y, ["U"] = Enum.KeyCode.U,
-    }
-    local upperKey = string.upper(keyName)
-    if keyMap[upperKey] then
-        _G.dashKeybind = keyMap[upperKey]
-        notifyGui("Keybind set to " .. upperKey)
-        return true
-    else
-        notifyGui("Invalid key! Use: E, Q, R, X, C, V, F, G, Z, T, Y, U")
-        return false
-    end
-end
+local loadSound = Instance.new("Sound")
+loadSound.Name = "LoadSound"
+loadSound.SoundId = "rbxassetid://87437544236708"
+loadSound.Volume = 1
+loadSound.Parent = gui
 
 -- Main frame
 local mainFrame = Instance.new("Frame")
@@ -693,12 +665,11 @@ mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 380, 0, 140)
 mainFrame.Position = UDim2.new(0.5, -190, 0.12, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-mainFrame.BackgroundTransparency = 0
+mainFrame.BackgroundTransparency = 1
 mainFrame.BorderSizePixel = 0
-mainFrame.Visible = true
+mainFrame.Visible = false
 mainFrame.Parent = gui
 mainFrame.Draggable = true
-mainFrame.Active = true
 
 local mainCorner = Instance.new("UICorner", mainFrame)
 mainCorner.CornerRadius = UDim.new(0, 20)
@@ -717,7 +688,7 @@ borderFrame.Name = "BorderFrame"
 borderFrame.Size = UDim2.new(1, 8, 1, 8)
 borderFrame.Position = UDim2.new(0, -4, 0, -4)
 borderFrame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-borderFrame.BackgroundTransparency = 0.7
+borderFrame.BackgroundTransparency = 1
 borderFrame.BorderSizePixel = 0
 borderFrame.ZIndex = 0
 borderFrame.Parent = mainFrame
@@ -725,7 +696,15 @@ borderFrame.Parent = mainFrame
 local borderCorner = Instance.new("UICorner", borderFrame)
 borderCorner.CornerRadius = UDim.new(0, 24)
 
--- Header
+local borderGradient = Instance.new("UIGradient")
+borderGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 0, 0)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26))
+})
+borderGradient.Rotation = 45
+borderGradient.Parent = borderFrame
+
 local headerFrame = Instance.new("Frame")
 headerFrame.Size = UDim2.new(1, 0, 0, 50)
 headerFrame.BackgroundTransparency = 1
@@ -767,7 +746,7 @@ authorLabel.TextXAlignment = Enum.TextXAlignment.Left
 authorLabel.TextTransparency = 0.28
 authorLabel.Parent = headerFrame
 
--- Buttons
+-- Close / minimize
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 35, 0, 35)
 closeBtn.Position = UDim2.new(1, -45, 0, 7)
@@ -794,6 +773,7 @@ minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
+-- Settings button
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Size = UDim2.new(0, 36, 0, 36)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
@@ -807,6 +787,7 @@ settingsBtn.Style = Enum.ButtonStyle.Custom
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
+-- KEYBINDS INFO BUTTON
 local keybindsInfoBtn = Instance.new("TextButton")
 keybindsInfoBtn.Size = UDim2.new(0, 36, 0, 36)
 keybindsInfoBtn.Position = UDim2.new(0, 56, 1, -46)
@@ -860,7 +841,252 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Minimized buttons
+-- SETTINGS OVERLAY - CHANGED: SMALLER SIZE + DRAGGABLE
+local settingsOverlay = Instance.new("Frame")
+settingsOverlay.Name = "SettingsOverlay"
+settingsOverlay.Size = UDim2.new(0, 220, 0, 200)
+settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
+settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+settingsOverlay.BackgroundTransparency = 1
+settingsOverlay.BorderSizePixel = 0
+settingsOverlay.Visible = false
+settingsOverlay.Parent = gui
+settingsOverlay.Draggable = true
+Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
+local overlayGradient = Instance.new("UIGradient", settingsOverlay)
+overlayGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+overlayGradient.Rotation = 90
+
+local settingsTitle = Instance.new("TextLabel")
+settingsTitle.Size = UDim2.new(1, -60, 0, 40)
+settingsTitle.Position = UDim2.new(0, 16, 0, 5)
+settingsTitle.BackgroundTransparency = 1
+settingsTitle.Text = "Settings"
+settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+settingsTitle.TextSize = 21
+settingsTitle.Font = Enum.Font.GothamBold
+settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
+settingsTitle.Parent = settingsOverlay
+
+local settingsCloseBtn = Instance.new("TextButton")
+settingsCloseBtn.Size = UDim2.new(0, 35, 0, 35)
+settingsCloseBtn.Position = UDim2.new(1, -45, 0, 6)
+settingsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+settingsCloseBtn.Text = "X"
+settingsCloseBtn.Font = Enum.Font.GothamBold
+settingsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+settingsCloseBtn.TextSize = 19
+settingsCloseBtn.BorderSizePixel = 0
+settingsCloseBtn.Style = Enum.ButtonStyle.Custom
+settingsCloseBtn.Parent = settingsOverlay
+Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
+
+-- SIZE CHANGER TEXTBOX
+local sizeLabel = Instance.new("TextLabel")
+sizeLabel.Size = UDim2.new(1, -32, 0, 25)
+sizeLabel.Position = UDim2.new(0, 16, 0, 55)
+sizeLabel.BackgroundTransparency = 1
+sizeLabel.Text = "Button Size:"
+sizeLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+sizeLabel.TextSize = 15
+sizeLabel.Font = Enum.Font.GothamBold
+sizeLabel.TextXAlignment = Enum.TextXAlignment.Left
+sizeLabel.Parent = settingsOverlay
+
+local sizeTextbox = Instance.new("TextBox")
+sizeTextbox.Size = UDim2.new(1, -32, 0, 30)
+sizeTextbox.Position = UDim2.new(0, 16, 0, 80)
+sizeTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+sizeTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+sizeTextbox.PlaceholderText = "50-150"
+sizeTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+sizeTextbox.BorderSizePixel = 0
+sizeTextbox.Text = tostring(_G.dashButtonSize)
+sizeTextbox.TextSize = 14
+sizeTextbox.Font = Enum.Font.Gotham
+sizeTextbox.Parent = settingsOverlay
+Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 8)
+
+-- DASH DISTANCE CHANGER TEXTBOX
+local distanceLabel = Instance.new("TextLabel")
+distanceLabel.Size = UDim2.new(1, -32, 0, 25)
+distanceLabel.Position = UDim2.new(0, 16, 0, 120)
+distanceLabel.BackgroundTransparency = 1
+distanceLabel.Text = "Dash Distance:"
+distanceLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+distanceLabel.TextSize = 15
+distanceLabel.Font = Enum.Font.GothamBold
+distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+distanceLabel.Parent = settingsOverlay
+
+local distanceTextbox = Instance.new("TextBox")
+distanceTextbox.Size = UDim2.new(1, -32, 0, 30)
+distanceTextbox.Position = UDim2.new(0, 16, 0, 145)
+distanceTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+distanceTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+distanceTextbox.PlaceholderText = "1-60"
+distanceTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+distanceTextbox.BorderSizePixel = 0
+distanceTextbox.Text = tostring(_G.dashDistance)
+distanceTextbox.TextSize = 14
+distanceTextbox.Font = Enum.Font.Gotham
+distanceTextbox.Parent = settingsOverlay
+Instance.new("UICorner", distanceTextbox).CornerRadius = UDim.new(0, 8)
+--// SNIPPET 4 - KEYBINDS TAB + BUTTON LOGIC
+
+-- KEYBINDS INFO OVERLAY - CHANGED: SMALLER SIZE + DRAGGABLE
+local keybindsOverlay = Instance.new("Frame")
+keybindsOverlay.Name = "KeybindsOverlay"
+keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
+keybindsOverlay.Position = UDim2.new(0.5, -110, 0.3, 0)
+keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+keybindsOverlay.BackgroundTransparency = 1
+keybindsOverlay.BorderSizePixel = 0
+keybindsOverlay.Visible = false
+keybindsOverlay.Parent = gui
+keybindsOverlay.Draggable = true
+Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 19)
+local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
+keybindsGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+keybindsGradient.Rotation = 90
+
+local keybindsTitle = Instance.new("TextLabel")
+keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
+keybindsTitle.Position = UDim2.new(0, 16, 0, 5)
+keybindsTitle.BackgroundTransparency = 1
+keybindsTitle.Text = "Keybinds"
+keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindsTitle.TextSize = 21
+keybindsTitle.Font = Enum.Font.GothamBold
+keybindsTitle.TextXAlignment = Enum.TextXAlignment.Left
+keybindsTitle.Parent = keybindsOverlay
+
+local keybindsCloseBtn = Instance.new("TextButton")
+keybindsCloseBtn.Size = UDim2.new(0, 35, 0, 35)
+keybindsCloseBtn.Position = UDim2.new(1, -45, 0, 6)
+keybindsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+keybindsCloseBtn.Text = "X"
+keybindsCloseBtn.Font = Enum.Font.GothamBold
+keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+keybindsCloseBtn.TextSize = 19
+keybindsCloseBtn.BorderSizePixel = 0
+keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
+keybindsCloseBtn.Parent = keybindsOverlay
+Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
+
+-- KEYBIND CHANGER TEXTBOX
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Size = UDim2.new(1, -32, 0, 25)
+keybindLabel.Position = UDim2.new(0, 16, 0, 55)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Dash Keybind:"
+keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+keybindLabel.TextSize = 15
+keybindLabel.Font = Enum.Font.GothamBold
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.Parent = keybindsOverlay
+
+local keybindTextbox = Instance.new("TextBox")
+keybindTextbox.Size = UDim2.new(1, -32, 0, 30)
+keybindTextbox.Position = UDim2.new(0, 16, 0, 80)
+keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindTextbox.PlaceholderText = "E, Q, R..."
+keybindTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+keybindTextbox.BorderSizePixel = 0
+keybindTextbox.Text = "E"
+keybindTextbox.TextSize = 14
+keybindTextbox.Font = Enum.Font.Gotham
+keybindTextbox.Parent = keybindsOverlay
+Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 8)
+
+local keyInfo1 = Instance.new("TextLabel")
+keyInfo1.Size = UDim2.new(1, -32, 0, 24)
+keyInfo1.Position = UDim2.new(0, 16, 0, 120)
+keyInfo1.BackgroundTransparency = 1
+keyInfo1.Text = "PC Dash Key: E"
+keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo1.TextSize = 15
+keyInfo1.Font = Enum.Font.Gotham
+keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo1.Parent = keybindsOverlay
+
+local keyInfo2 = Instance.new("TextLabel")
+keyInfo2.Size = UDim2.new(1, -32, 0, 24)
+keyInfo2.Position = UDim2.new(0, 16, 0, 146)
+keyInfo2.BackgroundTransparency = 1
+keyInfo2.Text = "Mobile Button :)"
+keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo2.TextSize = 15
+keyInfo2.Font = Enum.Font.Gotham
+keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo2.Parent = keybindsOverlay
+
+-- NOTIFY HELPER
+local function notifyGui(text)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Side Dash Assist",
+            Text = text,
+            Duration = 2,
+        })
+    end)
+end
+
+-- APPLY FUNCTIONS
+local function applyButtonSize(newSize)
+    local sizeNum = tonumber(newSize)
+    if not sizeNum or sizeNum < 50 or sizeNum > 150 then
+        notifyGui("Size must be between 50-150!")
+        return false
+    end
+    _G.dashButtonSize = sizeNum
+    dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
+    dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
+    dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
+    dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
+    notifyGui("Button size set to " .. sizeNum)
+    return true
+end
+
+local function applyDashDistance(newDistance)
+    local distNum = tonumber(newDistance)
+    if not distNum or distNum < 1 or distNum > 60 then
+        notifyGui("Distance must be between 1-60 studs!")
+        return false
+    end
+    _G.dashDistance = distNum
+    notifyGui("Dash distance set to " .. distNum .. " studs")
+    return true
+end
+
+local function applyKeybind(keyName)
+    local keyMap = {
+        ["E"] = Enum.KeyCode.E, ["Q"] = Enum.KeyCode.Q, ["R"] = Enum.KeyCode.R,
+        ["X"] = Enum.KeyCode.X, ["C"] = Enum.KeyCode.C, ["V"] = Enum.KeyCode.V,
+        ["F"] = Enum.KeyCode.F, ["G"] = Enum.KeyCode.G, ["Z"] = Enum.KeyCode.Z,
+        ["T"] = Enum.KeyCode.T, ["Y"] = Enum.KeyCode.Y, ["U"] = Enum.KeyCode.U,
+    }
+    local upperKey = string.upper(keyName)
+    if keyMap[upperKey] then
+        _G.dashKeybind = keyMap[upperKey]
+        notifyGui("Keybind set to " .. upperKey)
+        return true
+    else
+        notifyGui("Invalid key! Use: E, Q, R, X, C, V, F, G, Z, T, Y, U")
+        return false
+    end
+end
+
+-- Open button (minimized state)
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
 openButton.Size = UDim2.new(0, 90, 0, 34)
@@ -919,192 +1145,6 @@ dashIcon.Size = UDim2.new(0, 75, 0, 75)
 dashIcon.Position = UDim2.new(0.5, -37.5, 0.5, -37.5)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
---// SNIPPET 4 - OVERLAYS + BUTTON CONNECTIONS
-
--- SETTINGS OVERLAY
-local settingsOverlay = Instance.new("Frame")
-settingsOverlay.Name = "SettingsOverlay"
-settingsOverlay.Size = UDim2.new(0, 220, 0, 200)
-settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
-settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-settingsOverlay.BackgroundTransparency = 0
-settingsOverlay.BorderSizePixel = 0
-settingsOverlay.Visible = false
-settingsOverlay.Parent = gui
-settingsOverlay.Draggable = true
-Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 15)
-local overlayGradient = Instance.new("UIGradient", settingsOverlay)
-overlayGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
-})
-overlayGradient.Rotation = 90
-
-local settingsTitle = Instance.new("TextLabel")
-settingsTitle.Size = UDim2.new(1, -40, 0, 30)
-settingsTitle.Position = UDim2.new(0, 12, 0, 5)
-settingsTitle.BackgroundTransparency = 1
-settingsTitle.Text = "Settings"
-settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-settingsTitle.TextSize = 18
-settingsTitle.Font = Enum.Font.GothamBold
-settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-settingsTitle.Parent = settingsOverlay
-
-local settingsCloseBtn = Instance.new("TextButton")
-settingsCloseBtn.Size = UDim2.new(0, 28, 0, 28)
-settingsCloseBtn.Position = UDim2.new(1, -35, 0, 6)
-settingsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-settingsCloseBtn.Text = "X"
-settingsCloseBtn.Font = Enum.Font.GothamBold
-settingsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
-settingsCloseBtn.TextSize = 16
-settingsCloseBtn.BorderSizePixel = 0
-settingsCloseBtn.Style = Enum.ButtonStyle.Custom
-settingsCloseBtn.Parent = settingsOverlay
-Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 8)
-
-local sizeLabel = Instance.new("TextLabel")
-sizeLabel.Size = UDim2.new(1, -24, 0, 20)
-sizeLabel.Position = UDim2.new(0, 12, 0, 40)
-sizeLabel.BackgroundTransparency = 1
-sizeLabel.Text = "Button Size:"
-sizeLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-sizeLabel.TextSize = 13
-sizeLabel.Font = Enum.Font.GothamBold
-sizeLabel.TextXAlignment = Enum.TextXAlignment.Left
-sizeLabel.Parent = settingsOverlay
-
-local sizeTextbox = Instance.new("TextBox")
-sizeTextbox.Size = UDim2.new(1, -24, 0, 24)
-sizeTextbox.Position = UDim2.new(0, 12, 0, 60)
-sizeTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-sizeTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-sizeTextbox.PlaceholderText = "50-150"
-sizeTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-sizeTextbox.BorderSizePixel = 0
-sizeTextbox.Text = tostring(_G.dashButtonSize)
-sizeTextbox.TextSize = 12
-sizeTextbox.Font = Enum.Font.Gotham
-sizeTextbox.Parent = settingsOverlay
-Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 6)
-
-local distanceLabel = Instance.new("TextLabel")
-distanceLabel.Size = UDim2.new(1, -24, 0, 20)
-distanceLabel.Position = UDim2.new(0, 12, 0, 90)
-distanceLabel.BackgroundTransparency = 1
-distanceLabel.Text = "Dash Distance:"
-distanceLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-distanceLabel.TextSize = 13
-distanceLabel.Font = Enum.Font.GothamBold
-distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
-distanceLabel.Parent = settingsOverlay
-
-local distanceTextbox = Instance.new("TextBox")
-distanceTextbox.Size = UDim2.new(1, -24, 0, 24)
-distanceTextbox.Position = UDim2.new(0, 12, 0, 110)
-distanceTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-distanceTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-distanceTextbox.PlaceholderText = "1-60"
-distanceTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-distanceTextbox.BorderSizePixel = 0
-distanceTextbox.Text = tostring(_G.dashDistance)
-distanceTextbox.TextSize = 12
-distanceTextbox.Font = Enum.Font.Gotham
-distanceTextbox.Parent = settingsOverlay
-Instance.new("UICorner", distanceTextbox).CornerRadius = UDim.new(0, 6)
-
--- KEYBINDS OVERLAY
-local keybindsOverlay = Instance.new("Frame")
-keybindsOverlay.Name = "KeybindsOverlay"
-keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
-keybindsOverlay.Position = UDim2.new(0.5, -110, 0.3, 0)
-keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-keybindsOverlay.BackgroundTransparency = 0
-keybindsOverlay.BorderSizePixel = 0
-keybindsOverlay.Visible = false
-keybindsOverlay.Parent = gui
-keybindsOverlay.Draggable = true
-Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 15)
-local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
-keybindsGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
-})
-keybindsGradient.Rotation = 90
-
-local keybindsTitle = Instance.new("TextLabel")
-keybindsTitle.Size = UDim2.new(1, -40, 0, 30)
-keybindsTitle.Position = UDim2.new(0, 12, 0, 5)
-keybindsTitle.BackgroundTransparency = 1
-keybindsTitle.Text = "Keybinds"
-keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-keybindsTitle.TextSize = 18
-keybindsTitle.Font = Enum.Font.GothamBold
-keybindsTitle.TextXAlignment = Enum.TextXAlignment.Left
-keybindsTitle.Parent = keybindsOverlay
-
-local keybindsCloseBtn = Instance.new("TextButton")
-keybindsCloseBtn.Size = UDim2.new(0, 28, 0, 28)
-keybindsCloseBtn.Position = UDim2.new(1, -35, 0, 6)
-keybindsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-keybindsCloseBtn.Text = "X"
-keybindsCloseBtn.Font = Enum.Font.GothamBold
-keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
-keybindsCloseBtn.TextSize = 16
-keybindsCloseBtn.BorderSizePixel = 0
-keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
-keybindsCloseBtn.Parent = keybindsOverlay
-Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 8)
-
-local keybindLabel = Instance.new("TextLabel")
-keybindLabel.Size = UDim2.new(1, -24, 0, 20)
-keybindLabel.Position = UDim2.new(0, 12, 0, 40)
-keybindLabel.BackgroundTransparency = 1
-keybindLabel.Text = "Dash Keybind:"
-keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-keybindLabel.TextSize = 13
-keybindLabel.Font = Enum.Font.GothamBold
-keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
-keybindLabel.Parent = keybindsOverlay
-
-local keybindTextbox = Instance.new("TextBox")
-keybindTextbox.Size = UDim2.new(1, -24, 0, 24)
-keybindTextbox.Position = UDim2.new(0, 12, 0, 60)
-keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-keybindTextbox.PlaceholderText = "E, Q, R..."
-keybindTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-keybindTextbox.BorderSizePixel = 0
-keybindTextbox.Text = "E"
-keybindTextbox.TextSize = 12
-keybindTextbox.Font = Enum.Font.Gotham
-keybindTextbox.Parent = keybindsOverlay
-Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 6)
-
-local keyInfo1 = Instance.new("TextLabel")
-keyInfo1.Size = UDim2.new(1, -24, 0, 25)
-keyInfo1.Position = UDim2.new(0, 12, 0, 90)
-keyInfo1.BackgroundTransparency = 1
-keyInfo1.Text = "PC: Press keybind"
-keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo1.TextSize = 12
-keyInfo1.Font = Enum.Font.Gotham
-keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo1.Parent = keybindsOverlay
-
-local keyInfo2 = Instance.new("TextLabel")
-keyInfo2.Size = UDim2.new(1, -24, 0, 25)
-keyInfo2.Position = UDim2.new(0, 12, 0, 115)
-keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "Mobile: Tap button"
-keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo2.TextSize = 12
-keyInfo2.Font = Enum.Font.Gotham
-keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo2.Parent = keybindsOverlay
 
 -- BUTTON CONNECTIONS
 closeBtn.MouseButton1Click:Connect(function()
@@ -1173,31 +1213,21 @@ end)
 settingsBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     settingsOverlay.Visible = true
-    TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    local t = TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 1})
-    t:Play()
-    t.Completed:Connect(function()
-        settingsOverlay.Visible = false
-    end)
+    settingsOverlay.Visible = false
 end)
 
 keybindsInfoBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     keybindsOverlay.Visible = true
-    TweenService:Create(keybindsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
 end)
 
 keybindsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    local t = TweenService:Create(keybindsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 1})
-    t:Play()
-    t.Completed:Connect(function()
-        keybindsOverlay.Visible = false
-    end)
+    keybindsOverlay.Visible = false
 end)
 
 sizeTextbox.FocusLost:Connect(function(enterPressed)
@@ -1217,5 +1247,3 @@ keybindTextbox.FocusLost:Connect(function(enterPressed)
         applyKeybind(keybindTextbox.Text)
     end
 end)
-
-notify("Side Dash Assist v1.5", "Loaded! Keybind: E")
