@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + ENEMY CHAM SYSTEM
+--// SNIPPET 1 - CORE SETUP + FIXED RED CHAM SYSTEM
 
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
@@ -27,7 +27,7 @@ local Humanoid = Character:FindFirstChildOfClass("Humanoid")
 
 _G.dashButtonSize = 90
 _G.dashKeybind = Enum.KeyCode.E
-_G.dashCooldown = 1.5
+_G.dashCooldown = 2.0
 _G.dashDistance = 3.5
 
 local function isCharacterDisabled()
@@ -56,6 +56,9 @@ local leftAnimationId = currentGameAnimations.Left
 local rightAnimationId = currentGameAnimations.Right
 local straightAnimationId = currentGameAnimations.Straight
 
+-- BLOCK ONLY THIS SPECIFIC ANIMATION ID
+local BLOCKED_ANIMATION_ID = 10449761463
+
 local MAX_TARGET_RANGE = 40
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
@@ -82,20 +85,50 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- ENEMY RED CHAM SYSTEM (tracks nearest player + double-click lock)
+-- FIXED RED CHAM SYSTEM
 local chammedPlayers = {}
 local forcedLockedPlayer = nil
+local targetChamParts = {}
 
 local function addRedChamToPlayer(player)
     if not player or not player.Character then return end
     if chammedPlayers[player] then return end
     
     chammedPlayers[player] = {}
+    targetChamParts[player] = {}
+    
     for _, part in pairs(player.Character:GetDescendants()) do
         if part:IsA("BasePart") then
             local originalColor = part.Color
-            chammedPlayers[player][part] = originalColor
-            TweenService:Create(part, TweenInfo.new(0.15), {Color = Color3.fromRGB(255, 0, 0)}):Play()
+            local originalTransparency = part.Transparency
+            
+            chammedPlayers[player][part] = {
+                Color = originalColor,
+                Transparency = originalTransparency
+            }
+            
+            -- Create new part for red cham overlay
+            local chamPart = Instance.new("Part")
+            chamPart.Name = part.Name .. "_Cham"
+            chamPart.Shape = part.Shape
+            chamPart.Material = Enum.Material.Neon
+            chamPart.CanCollide = false
+            chamPart.CFrame = part.CFrame
+            chamPart.Size = part.Size
+            chamPart.Color = Color3.fromRGB(255, 0, 0)
+            chamPart.Transparency = 0.15
+            chamPart.TopSurface = Enum.SurfaceType.Smooth
+            chamPart.BottomSurface = Enum.SurfaceType.Smooth
+            chamPart.Parent = part
+            
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = part
+            weld.Part1 = chamPart
+            weld.Parent = chamPart
+            
+            targetChamParts[player][part] = chamPart
+            
+            part.Transparency = 0
         end
     end
 end
@@ -103,9 +136,19 @@ end
 local function removeRedChamFromPlayer(player)
     if not chammedPlayers[player] then return end
     
-    for part, originalColor in pairs(chammedPlayers[player]) do
+    if targetChamParts[player] then
+        for _, chamPart in pairs(targetChamParts[player]) do
+            if chamPart and chamPart.Parent then
+                chamPart:Destroy()
+            end
+        end
+        targetChamParts[player] = nil
+    end
+    
+    for part, originalData in pairs(chammedPlayers[player]) do
         if part and part.Parent then
-            TweenService:Create(part, TweenInfo.new(0.3), {Color = originalColor}):Play()
+            part.Color = originalData.Color
+            part.Transparency = originalData.Transparency
         end
     end
     chammedPlayers[player] = nil
@@ -215,7 +258,7 @@ local function notify(title, text)
 end
 
 notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
---// SNIPPET 2A - DASH LOGIC PART 1
+--// SNIPPET 2A - DASH LOGIC PART 1 - FIXED ANIMATION CHECK
 
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
@@ -376,7 +419,8 @@ local function aimCharacterAtTarget(targetPosition, lerpFactor)
     end)
 end
 
-local function isAnyAnimationPlaying()
+-- FIXED ANIMATION CHECK - ONLY BLOCKS SPECIFIC ANIMATION ID
+local function isBlockedAnimationPlaying()
     if not Character or not Character.Parent then return false end
     local humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false end
@@ -385,12 +429,15 @@ local function isAnyAnimationPlaying()
     
     for _, track in pairs(animator:GetPlayingAnimationTracks()) do
         if track and track.IsPlaying then
-            return true
+            local animId = track.Animation.AnimationId
+            if string.find(animId, tostring(BLOCKED_ANIMATION_ID)) then
+                return true
+            end
         end
     end
     return false
 end
---// SNIPPET 2B - DASH LOGIC PART 2
+--// SNIPPET 2B - DASH LOGIC PART 2 - COOLDOWN SYSTEM
 
 local m1ToggleEnabled = false
 local dashToggleEnabled = false
@@ -518,16 +565,17 @@ end
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     
-    if isAnyAnimationPlaying() then
+    -- CHECK IF BLOCKED ANIMATION IS PLAYING
+    if isBlockedAnimationPlaying() then
         notify("Blocked", "Cannot dash while animating")
         return
     end
     
     local currentTime = tick()
     local timeSinceLastDash = currentTime - lastButtonPressTime
+    
+    -- CHECK COOLDOWN - BLOCK IF NOT READY
     if timeSinceLastDash < _G.dashCooldown then
-        local remainingMs = math.ceil((_G.dashCooldown - timeSinceLastDash) * 1000)
-        notify("Cooldown", "Wait " .. remainingMs .. "ms")
         return
     end
     
@@ -681,7 +729,7 @@ InputService.InputBegan:Connect(function(inp, gp)
         end
     end
 end)
---// SNIPPET 3 - GUI + ALL DRAGGABLE TABS
+--// SNIPPET 3 - GUI + ALL DRAGGABLE TABS - FIXED
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -706,17 +754,31 @@ loadSound.SoundId = "rbxassetid://87437544236708"
 loadSound.Volume = 1
 loadSound.Parent = gui
 
+-- COOLDOWN LABEL
+local cooldownLabel = Instance.new("TextLabel")
+cooldownLabel.Name = "CooldownLabel"
+cooldownLabel.Size = UDim2.new(0, 100, 0, 30)
+cooldownLabel.Position = UDim2.new(1, -120, 1, -50)
+cooldownLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+cooldownLabel.BackgroundTransparency = 0.3
+cooldownLabel.BorderSizePixel = 0
+cooldownLabel.Text = "Ready"
+cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+cooldownLabel.TextSize = 11
+cooldownLabel.Font = Enum.Font.GothamBold
+cooldownLabel.Parent = gui
+Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
+
 -- Main frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 380, 0, 140)
 mainFrame.Position = UDim2.new(0.5, -190, 0.12, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-mainFrame.BackgroundTransparency = 1
+mainFrame.BackgroundTransparency = 0
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
 mainFrame.Parent = gui
-mainFrame.Draggable = true
 
 local mainCorner = Instance.new("UICorner", mainFrame)
 mainCorner.CornerRadius = UDim.new(0, 20)
@@ -735,7 +797,7 @@ borderFrame.Name = "BorderFrame"
 borderFrame.Size = UDim2.new(1, 8, 1, 8)
 borderFrame.Position = UDim2.new(0, -4, 0, -4)
 borderFrame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-borderFrame.BackgroundTransparency = 1
+borderFrame.BackgroundTransparency = 0
 borderFrame.BorderSizePixel = 0
 borderFrame.ZIndex = 0
 borderFrame.Parent = mainFrame
@@ -804,6 +866,7 @@ closeBtn.TextSize = 19
 closeBtn.BorderSizePixel = 0
 closeBtn.Style = Enum.ButtonStyle.Custom
 closeBtn.Parent = mainFrame
+closeBtn.ZIndex = 100
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
 local minimizeBtn = Instance.new("TextButton")
@@ -817,6 +880,7 @@ minimizeBtn.TextSize = 22
 minimizeBtn.BorderSizePixel = 0
 minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
+minimizeBtn.ZIndex = 100
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
 local settingsBtn = Instance.new("TextButton")
@@ -829,6 +893,7 @@ settingsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 settingsBtn.TextSize = 19
 settingsBtn.BorderSizePixel = 0
 settingsBtn.Style = Enum.ButtonStyle.Custom
+settingsBtn.ZIndex = 100
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
@@ -842,6 +907,7 @@ keybindsInfoBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 keybindsInfoBtn.TextSize = 19
 keybindsInfoBtn.BorderSizePixel = 0
 keybindsInfoBtn.Style = Enum.ButtonStyle.Custom
+keybindsInfoBtn.ZIndex = 100
 keybindsInfoBtn.Parent = mainFrame
 Instance.new("UICorner", keybindsInfoBtn).CornerRadius = UDim.new(1, 0)
 
@@ -856,6 +922,7 @@ discordBtn.Font = Enum.Font.GothamBold
 discordBtn.TextSize = 14
 discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 discordBtn.Style = Enum.ButtonStyle.Custom
+discordBtn.ZIndex = 100
 discordBtn.Parent = mainFrame
 Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 10)
 local discordGradient = Instance.new("UIGradient", discordBtn)
@@ -876,6 +943,7 @@ ytBtn.Font = Enum.Font.GothamBold
 ytBtn.TextSize = 14
 ytBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ytBtn.Style = Enum.ButtonStyle.Custom
+ytBtn.ZIndex = 100
 ytBtn.Parent = mainFrame
 Instance.new("UICorner", ytBtn).CornerRadius = UDim.new(0, 10)
 local ytGradient = Instance.new("UIGradient", ytBtn)
@@ -885,17 +953,17 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay (DRAGGABLE)
+-- Settings overlay (VISIBLE + DRAGGABLE FIX)
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
 settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
 settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
 settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-settingsOverlay.BackgroundTransparency = 1
+settingsOverlay.BackgroundTransparency = 0
 settingsOverlay.BorderSizePixel = 0
 settingsOverlay.Visible = false
 settingsOverlay.Parent = gui
-settingsOverlay.Draggable = true
+settingsOverlay.ZIndex = 50
 Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
 overlayGradient.Color = ColorSequence.new({
@@ -904,6 +972,33 @@ overlayGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
 })
 overlayGradient.Rotation = 90
+
+-- MAKE SETTINGS DRAGGABLE WITH MOUSE DRAG
+local dragging = false
+local dragStart = nil
+local frameStart = nil
+
+settingsOverlay.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        frameStart = settingsOverlay.Position
+    end
+end)
+
+InputService.InputChanged:Connect(function(input, gp)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        settingsOverlay.Position = frameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
 
 local settingsTitle = Instance.new("TextLabel")
 settingsTitle.Size = UDim2.new(1, -60, 0, 40)
@@ -926,6 +1021,7 @@ settingsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 settingsCloseBtn.TextSize = 19
 settingsCloseBtn.BorderSizePixel = 0
 settingsCloseBtn.Style = Enum.ButtonStyle.Custom
+settingsCloseBtn.ZIndex = 100
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
 
@@ -995,7 +1091,7 @@ sizeTextbox.Font = Enum.Font.Gotham
 sizeTextbox.Parent = settingsOverlay
 Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 8)
 
--- Keybinds overlay (DRAGGABLE + VISIBLE FIX)
+-- Keybinds overlay (FIXED DRAGGING)
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
 keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
@@ -1005,7 +1101,7 @@ keybindsOverlay.BackgroundTransparency = 0
 keybindsOverlay.BorderSizePixel = 0
 keybindsOverlay.Visible = false
 keybindsOverlay.Parent = gui
-keybindsOverlay.Draggable = true
+keybindsOverlay.ZIndex = 50
 Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 19)
 local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
 keybindsGradient.Color = ColorSequence.new({
@@ -1014,6 +1110,33 @@ keybindsGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
 })
 keybindsGradient.Rotation = 90
+
+-- MAKE KEYBINDS DRAGGABLE
+local keybindsDragging = false
+local keybindsDragStart = nil
+local keybindsFrameStart = nil
+
+keybindsOverlay.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        keybindsDragging = true
+        keybindsDragStart = input.Position
+        keybindsFrameStart = keybindsOverlay.Position
+    end
+end)
+
+InputService.InputChanged:Connect(function(input, gp)
+    if keybindsDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - keybindsDragStart
+        keybindsOverlay.Position = keybindsFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        keybindsDragging = false
+    end
+end)
 
 local keybindsTitle = Instance.new("TextLabel")
 keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
@@ -1036,6 +1159,7 @@ keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 keybindsCloseBtn.TextSize = 19
 keybindsCloseBtn.BorderSizePixel = 0
 keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
+keybindsCloseBtn.ZIndex = 100
 keybindsCloseBtn.Parent = keybindsOverlay
 Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
 
@@ -1098,8 +1222,8 @@ openButton.Font = Enum.Font.GothamBold
 openButton.BorderSizePixel = 0
 openButton.Visible = false
 openButton.Style = Enum.ButtonStyle.Custom
+openButton.ZIndex = 100
 openButton.Parent = gui
-openButton.Draggable = true
 Instance.new("UICorner", openButton).CornerRadius = UDim.new(0, 10)
 
 local dashButtonLocked = false
@@ -1115,11 +1239,10 @@ lockButton.Font = Enum.Font.GothamBold
 lockButton.BorderSizePixel = 0
 lockButton.Visible = false
 lockButton.Style = Enum.ButtonStyle.Custom
+lockButton.ZIndex = 100
 lockButton.Parent = gui
-lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
--- REFRESH BUTTON (clears forced target lock)
 local refreshBtn = Instance.new("TextButton")
 refreshBtn.Name = "RefreshButton"
 refreshBtn.Size = UDim2.new(0, 90, 0, 34)
@@ -1132,8 +1255,8 @@ refreshBtn.Font = Enum.Font.GothamBold
 refreshBtn.BorderSizePixel = 0
 refreshBtn.Visible = false
 refreshBtn.Style = Enum.ButtonStyle.Custom
+refreshBtn.ZIndex = 100
 refreshBtn.Parent = gui
-refreshBtn.Draggable = true
 Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 10)
 
 local dashBtn = Instance.new("Frame")
@@ -1144,7 +1267,8 @@ dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 dashBtn.BorderSizePixel = 0
 dashBtn.Parent = gui
 dashBtn.Active = true
-dashBtn.Draggable = true
+dashBtn.ZIndex = 100
+
 Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
 
 local dashGrad = Instance.new("UIGradient", dashBtn)
@@ -1211,20 +1335,34 @@ end
 -- DOUBLE-CLICK TARGET LOCK SYSTEM
 local lastClickTime = {}
 local DOUBLE_CLICK_THRESHOLD = 0.3
+local targetClickCount = {}
 
 local function onPlayerDoubleClick(player)
     if not lastClickTime[player] then
         lastClickTime[player] = tick()
+        targetClickCount[player] = 1
         return
     end
     
     local timeSinceLastClick = tick() - lastClickTime[player]
     if timeSinceLastClick < DOUBLE_CLICK_THRESHOLD then
-        forcedLockedPlayer = player
-        notifyGui("Target locked: " .. player.Name)
-        lastClickTime[player] = nil
+        targetClickCount[player] = (targetClickCount[player] or 0) + 1
+        
+        if targetClickCount[player] >= 2 then
+            -- TOGGLE: if already locked, unlock; otherwise lock
+            if forcedLockedPlayer == player then
+                forcedLockedPlayer = nil
+                notifyGui("Target unlocked: " .. player.Name)
+            else
+                forcedLockedPlayer = player
+                notifyGui("Target locked: " .. player.Name)
+            end
+            targetClickCount[player] = 0
+            lastClickTime[player] = nil
+        end
     else
         lastClickTime[player] = tick()
+        targetClickCount[player] = 1
     end
 end
 
@@ -1301,18 +1439,32 @@ PlayersService.PlayerRemoving:Connect(function(player)
     end
 end)
 
+-- COOLDOWN LABEL UPDATE
+local cooldownUpdateLoop = RunService.Heartbeat:Connect(function()
+    local timeSinceLastDash = tick() - lastButtonPressTime
+    local cooldownRemaining = math.max(0, _G.dashCooldown - timeSinceLastDash)
+    
+    if cooldownRemaining <= 0 then
+        cooldownLabel.Text = "Ready"
+        cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    else
+        cooldownLabel.Text = string.format("%.2fs", cooldownRemaining)
+        
+        if cooldownRemaining >= 1.5 then
+            cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        elseif cooldownRemaining >= 0.5 then
+            cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+        else
+            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        end
+    end
+end)
+
 -- Button connections
 lockButton.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     dashButtonLocked = not dashButtonLocked
-    dashBtn.Draggable = not dashButtonLocked
-    mainFrame.Draggable = not dashButtonLocked
-    openButton.Draggable = not dashButtonLocked
-    lockButton.Draggable = not dashButtonLocked
-    refreshBtn.Draggable = not dashButtonLocked
-    settingsOverlay.Draggable = not dashButtonLocked
-    keybindsOverlay.Draggable = not dashButtonLocked
-
+    
     if dashButtonLocked then
         lockButton.Text = "🔒 Locked"
         notifyGui("All elements locked.")
@@ -1322,7 +1474,6 @@ lockButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- REFRESH BUTTON - clears forced target lock
 refreshBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     forcedLockedPlayer = nil
@@ -1379,7 +1530,7 @@ end)
 
 settingsBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    settingsOverlay.Visible = true
+    settingsOverlay.Visible = not settingsOverlay.Visible
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
@@ -1389,7 +1540,7 @@ end)
 
 keybindsInfoBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    keybindsOverlay.Visible = true
+    keybindsOverlay.Visible = not keybindsOverlay.Visible
 end)
 
 keybindsCloseBtn.MouseButton1Click:Connect(function()
