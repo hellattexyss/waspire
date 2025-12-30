@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + FIXED RED CHAM SYSTEM
+--// SNIPPET 1 - CORE SETUP + CLEAN RED CHAM ESP SYSTEM
 
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
@@ -28,7 +28,7 @@ local Humanoid = Character:FindFirstChildOfClass("Humanoid")
 _G.dashButtonSize = 90
 _G.dashKeybind = Enum.KeyCode.E
 _G.dashCooldown = 2.0
-_G.dashDistance = 3.5
+_G.dashDistance = 0.5
 
 local function isCharacterDisabled()
     if not (Humanoid and Humanoid.Parent) then return false end
@@ -56,10 +56,8 @@ local leftAnimationId = currentGameAnimations.Left
 local rightAnimationId = currentGameAnimations.Right
 local straightAnimationId = currentGameAnimations.Straight
 
--- BLOCK ONLY THIS SPECIFIC ANIMATION ID
 local BLOCKED_ANIMATION_ID = 10449761463
-
-local MAX_TARGET_RANGE = 40
+local MAX_TARGET_RANGE = 3.5
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
@@ -85,50 +83,38 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- FIXED RED CHAM SYSTEM
+-- CLEAN RED CHAM ESP SYSTEM (NO BOXING, SIMPLE TRANSPARENCY LAYER)
 local chammedPlayers = {}
 local forcedLockedPlayer = nil
-local targetChamParts = {}
+local chamParts = {}
 
 local function addRedChamToPlayer(player)
     if not player or not player.Character then return end
     if chammedPlayers[player] then return end
     
     chammedPlayers[player] = {}
-    targetChamParts[player] = {}
+    chamParts[player] = {}
     
-    for _, part in pairs(player.Character:GetDescendants()) do
-        if part:IsA("BasePart") then
+    local char = player.Character
+    
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part ~= char:FindFirstChild("HumanoidRootPart") then
             local originalColor = part.Color
             local originalTransparency = part.Transparency
+            local originalMaterial = part.Material
             
             chammedPlayers[player][part] = {
                 Color = originalColor,
-                Transparency = originalTransparency
+                Transparency = originalTransparency,
+                Material = originalMaterial
             }
             
-            -- Create new part for red cham overlay
-            local chamPart = Instance.new("Part")
-            chamPart.Name = part.Name .. "_Cham"
-            chamPart.Shape = part.Shape
-            chamPart.Material = Enum.Material.Neon
-            chamPart.CanCollide = false
-            chamPart.CFrame = part.CFrame
-            chamPart.Size = part.Size
-            chamPart.Color = Color3.fromRGB(255, 0, 0)
-            chamPart.Transparency = 0.15
-            chamPart.TopSurface = Enum.SurfaceType.Smooth
-            chamPart.BottomSurface = Enum.SurfaceType.Smooth
-            chamPart.Parent = part
+            -- SIMPLE: Just change color and transparency, don't create new parts
+            part.Color = Color3.fromRGB(255, 0, 0)
+            part.Transparency = 0.75
+            part.Material = Enum.Material.SmoothPlastic
             
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = part
-            weld.Part1 = chamPart
-            weld.Parent = chamPart
-            
-            targetChamParts[player][part] = chamPart
-            
-            part.Transparency = 0
+            table.insert(chamParts[player], part)
         end
     end
 end
@@ -136,22 +122,16 @@ end
 local function removeRedChamFromPlayer(player)
     if not chammedPlayers[player] then return end
     
-    if targetChamParts[player] then
-        for _, chamPart in pairs(targetChamParts[player]) do
-            if chamPart and chamPart.Parent then
-                chamPart:Destroy()
-            end
-        end
-        targetChamParts[player] = nil
-    end
-    
     for part, originalData in pairs(chammedPlayers[player]) do
         if part and part.Parent then
             part.Color = originalData.Color
             part.Transparency = originalData.Transparency
+            part.Material = originalData.Material
         end
     end
+    
     chammedPlayers[player] = nil
+    chamParts[player] = nil
 end
 
 local function updateEnemyCham()
@@ -161,7 +141,9 @@ local function updateEnemyCham()
                 removeRedChamFromPlayer(player)
             end
         end
-        addRedChamToPlayer(forcedLockedPlayer)
+        if forcedLockedPlayer.Character then
+            addRedChamToPlayer(forcedLockedPlayer)
+        end
         return
     end
     
@@ -257,8 +239,8 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
---// SNIPPET 2A - DASH LOGIC PART 1 - FIXED ANIMATION CHECK
+notify("Side Dash Assist v2.0", "Loaded successfully!")
+--// SNIPPET 2A - DASH LOGIC PART 1 - ANIMATIONS & TARGETING
 
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
@@ -361,6 +343,7 @@ end
 
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
+
 PlayersService.PlayerRemoving:Connect(function(removedPlayer)
     if lockedTargetPlayer == removedPlayer then
         lockedTargetPlayer = nil
@@ -419,7 +402,6 @@ local function aimCharacterAtTarget(targetPosition, lerpFactor)
     end)
 end
 
--- FIXED ANIMATION CHECK - ONLY BLOCKS SPECIFIC ANIMATION ID
 local function isBlockedAnimationPlaying()
     if not Character or not Character.Parent then return false end
     local humanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -437,7 +419,7 @@ local function isBlockedAnimationPlaying()
     end
     return false
 end
---// SNIPPET 2B - DASH LOGIC PART 2 - COOLDOWN SYSTEM
+--// SNIPPET 2B - DASH LOGIC PART 2 - MOVEMENT & COOLDOWN
 
 local m1ToggleEnabled = false
 local dashToggleEnabled = false
@@ -565,7 +547,6 @@ end
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     
-    -- CHECK IF BLOCKED ANIMATION IS PLAYING
     if isBlockedAnimationPlaying() then
         notify("Blocked", "Cannot dash while animating")
         return
@@ -574,7 +555,6 @@ local function performCircularDash(targetCharacter)
     local currentTime = tick()
     local timeSinceLastDash = currentTime - lastButtonPressTime
     
-    -- CHECK COOLDOWN - BLOCK IF NOT READY
     if timeSinceLastDash < _G.dashCooldown then
         return
     end
@@ -726,10 +706,12 @@ InputService.InputBegan:Connect(function(inp, gp)
         local target = getCurrentTarget()
         if target then
             performCircularDash(target)
+        else
+            notify("No Target", "No enemies in range!")
         end
     end
 end)
---// SNIPPET 3 - GUI + ALL DRAGGABLE TABS - FIXED
+--// SNIPPET 3 - GUI + ALL TABS - COMPLETE & RESTORED
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -754,11 +736,11 @@ loadSound.SoundId = "rbxassetid://87437544236708"
 loadSound.Volume = 1
 loadSound.Parent = gui
 
--- COOLDOWN LABEL
+-- COOLDOWN LABEL - BOTTOM LEFT
 local cooldownLabel = Instance.new("TextLabel")
 cooldownLabel.Name = "CooldownLabel"
 cooldownLabel.Size = UDim2.new(0, 100, 0, 30)
-cooldownLabel.Position = UDim2.new(1, -120, 1, -50)
+cooldownLabel.Position = UDim2.new(0, 10, 1, -50)
 cooldownLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 cooldownLabel.BackgroundTransparency = 0.3
 cooldownLabel.BorderSizePixel = 0
@@ -953,7 +935,7 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay (VISIBLE + DRAGGABLE FIX)
+-- Settings overlay
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
 settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
@@ -973,30 +955,30 @@ overlayGradient.Color = ColorSequence.new({
 })
 overlayGradient.Rotation = 90
 
--- MAKE SETTINGS DRAGGABLE WITH MOUSE DRAG
-local dragging = false
-local dragStart = nil
-local frameStart = nil
+-- MAKE SETTINGS DRAGGABLE
+local settingsDragging = false
+local settingsDragStart = nil
+local settingsFrameStart = nil
 
 settingsOverlay.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        frameStart = settingsOverlay.Position
+        settingsDragging = true
+        settingsDragStart = input.Position
+        settingsFrameStart = settingsOverlay.Position
     end
 end)
 
 InputService.InputChanged:Connect(function(input, gp)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStart
-        settingsOverlay.Position = frameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    if settingsDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - settingsDragStart
+        settingsOverlay.Position = settingsFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
     end
 end)
 
 InputService.InputEnded:Connect(function(input, gp)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
+        settingsDragging = false
     end
 end)
 
@@ -1091,7 +1073,7 @@ sizeTextbox.Font = Enum.Font.Gotham
 sizeTextbox.Parent = settingsOverlay
 Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 8)
 
--- Keybinds overlay (FIXED DRAGGING)
+-- Keybinds overlay
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
 keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
@@ -1285,7 +1267,34 @@ dashIcon.Size = UDim2.new(0, _G.dashButtonSize - 15, 0, _G.dashButtonSize - 15)
 dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dashButtonSize - 15) / 2)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
---// SNIPPET 4 - APPLY FUNCTIONS + BUTTON LOGIC
+dashIcon.ZIndex = 101local dashBtn = Instance.new("Frame")
+dashBtn.Name = "DashButton_Final"
+dashBtn.Size = UDim2.new(0, _G.dashButtonSize, 0, _G.dashButtonSize)
+dashBtn.Position = UDim2.new(1, -(_G.dashButtonSize + 15), 0.5, -_G.dashButtonSize / 2)
+dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+dashBtn.BorderSizePixel = 0
+dashBtn.Parent = gui
+dashBtn.Active = true
+dashBtn.ZIndex = 100
+
+Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
+
+local dashGrad = Instance.new("UIGradient", dashBtn)
+dashGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 0, 0)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 0, 0))
+})
+dashGrad.Rotation = 45
+
+local dashIcon = Instance.new("ImageLabel")
+dashIcon.BackgroundTransparency = 1
+dashIcon.Size = UDim2.new(0, _G.dashButtonSize - 15, 0, _G.dashButtonSize - 15)
+dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dashButtonSize - 15) / 2)
+dashIcon.Image = "rbxassetid://12443244342"
+dashIcon.Parent = dashBtn
+dashIcon.ZIndex = 101
+--// SNIPPET 4 - BUTTON LOGIC + TARGET LOCKING (FIXED)
 
 local function notifyGui(text)
     pcall(function()
@@ -1332,37 +1341,30 @@ local function applyKeybind(keyName)
     end
 end
 
--- DOUBLE-CLICK TARGET LOCK SYSTEM
+-- FIXED DOUBLE-CLICK TARGET LOCK SYSTEM
 local lastClickTime = {}
-local DOUBLE_CLICK_THRESHOLD = 0.3
-local targetClickCount = {}
+local DOUBLE_CLICK_THRESHOLD = 0.25
 
 local function onPlayerDoubleClick(player)
     if not lastClickTime[player] then
         lastClickTime[player] = tick()
-        targetClickCount[player] = 1
         return
     end
     
     local timeSinceLastClick = tick() - lastClickTime[player]
     if timeSinceLastClick < DOUBLE_CLICK_THRESHOLD then
-        targetClickCount[player] = (targetClickCount[player] or 0) + 1
-        
-        if targetClickCount[player] >= 2 then
-            -- TOGGLE: if already locked, unlock; otherwise lock
-            if forcedLockedPlayer == player then
-                forcedLockedPlayer = nil
-                notifyGui("Target unlocked: " .. player.Name)
-            else
-                forcedLockedPlayer = player
-                notifyGui("Target locked: " .. player.Name)
-            end
-            targetClickCount[player] = 0
-            lastClickTime[player] = nil
+        -- TOGGLE: if already locked, unlock; otherwise lock
+        if forcedLockedPlayer == player then
+            forcedLockedPlayer = nil
+            removeRedChamFromPlayer(player)
+            notifyGui("Unlocked: " .. player.Name)
+        else
+            forcedLockedPlayer = player
+            notifyGui("Locked: " .. player.Name)
         end
+        lastClickTime[player] = nil
     else
         lastClickTime[player] = tick()
-        targetClickCount[player] = 1
     end
 end
 
@@ -1440,7 +1442,7 @@ PlayersService.PlayerRemoving:Connect(function(player)
 end)
 
 -- COOLDOWN LABEL UPDATE
-local cooldownUpdateLoop = RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
     local timeSinceLastDash = tick() - lastButtonPressTime
     local cooldownRemaining = math.max(0, _G.dashCooldown - timeSinceLastDash)
     
@@ -1467,15 +1469,18 @@ lockButton.MouseButton1Click:Connect(function()
     
     if dashButtonLocked then
         lockButton.Text = "🔒 Locked"
-        notifyGui("All elements locked.")
+        notifyGui("All elements locked")
     else
         lockButton.Text = "🔓 Unlocked"
-        notifyGui("All elements unlocked.")
+        notifyGui("All elements unlocked")
     end
 end)
 
 refreshBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
+    if forcedLockedPlayer then
+        removeRedChamFromPlayer(forcedLockedPlayer)
+    end
     forcedLockedPlayer = nil
     notifyGui("Target lock cleared")
 end)
@@ -1488,7 +1493,7 @@ dashBtn.InputBegan:Connect(function(input)
         if target then
             performCircularDash(target)
         else
-            notifyGui("No target found!")
+            notifyGui("No target in range!")
         end
     end
 end)
@@ -1564,9 +1569,9 @@ discordBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     if setclipboard then
         setclipboard("https://discord.gg/YFf3rdXbUf")
-        notifyGui("Discord invite copied.")
+        notifyGui("Discord copied!")
     else
-        notifyGui("Discord: https://discord.gg/YFf3rdXbUf")
+        notifyGui("Discord: discord.gg/YFf3rdXbUf")
     end
 end)
 
@@ -1574,9 +1579,9 @@ ytBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     if setclipboard then
         setclipboard("https://youtube.com/@waspire")
-        notifyGui("YouTube link copied.")
+        notifyGui("YouTube copied!")
     else
-        notifyGui("YouTube: https://youtube.com/@waspire")
+        notifyGui("YouTube: youtube.com/@waspire")
     end
 end)
 
