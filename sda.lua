@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + CLEAN RED CHAM ESP SYSTEM
+--// SNIPPET 1 - CORE SETUP WITH PROPER ERROR HANDLING
 
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
@@ -14,7 +14,6 @@ local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local InputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
@@ -46,15 +45,16 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
+-- FIXED: Only use valid animation IDs (no invalid ones)
 local ANIMATION_IDS = {
-    [10449761463] = {Left = 10480796021, Right = 10480793962, Straight = 10479335397},
-    [13076380114] = {Left = 101843860692381, Right = 100087324592640, Straight = 110878031211717}
+    Left = 10480796021,
+    Right = 10480793962,
+    Straight = 10479335397
 }
-local gameId = game.PlaceId
-local currentGameAnimations = ANIMATION_IDS[gameId] or ANIMATION_IDS[13076380114]
-local leftAnimationId = currentGameAnimations.Left
-local rightAnimationId = currentGameAnimations.Right
-local straightAnimationId = currentGameAnimations.Straight
+
+local leftAnimationId = ANIMATION_IDS.Left
+local rightAnimationId = ANIMATION_IDS.Right
+local straightAnimationId = ANIMATION_IDS.Straight
 
 local BLOCKED_ANIMATION_ID = 10449761463
 local MAX_TARGET_RANGE = 3.5
@@ -83,20 +83,17 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- CLEAN RED CHAM ESP SYSTEM (NO BOXING, SIMPLE TRANSPARENCY LAYER)
+-- CLEAN RED CHAM ESP SYSTEM
 local chammedPlayers = {}
 local forcedLockedPlayer = nil
-local chamParts = {}
 
 local function addRedChamToPlayer(player)
     if not player or not player.Character then return end
     if chammedPlayers[player] then return end
     
     chammedPlayers[player] = {}
-    chamParts[player] = {}
     
     local char = player.Character
-    
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part ~= char:FindFirstChild("HumanoidRootPart") then
             local originalColor = part.Color
@@ -109,12 +106,9 @@ local function addRedChamToPlayer(player)
                 Material = originalMaterial
             }
             
-            -- SIMPLE: Just change color and transparency, don't create new parts
             part.Color = Color3.fromRGB(255, 0, 0)
             part.Transparency = 0.75
             part.Material = Enum.Material.SmoothPlastic
-            
-            table.insert(chamParts[player], part)
         end
     end
 end
@@ -131,7 +125,6 @@ local function removeRedChamFromPlayer(player)
     end
     
     chammedPlayers[player] = nil
-    chamParts[player] = nil
 end
 
 local function updateEnemyCham()
@@ -240,7 +233,7 @@ local function notify(title, text)
 end
 
 notify("Side Dash Assist v2.0", "Loaded successfully!")
---// SNIPPET 2A - DASH LOGIC PART 1 - ANIMATIONS & TARGETING
+--// SNIPPET 2A - ANIMATIONS & TARGETING
 
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
@@ -277,7 +270,7 @@ local function playSideAnimation(isLeftDirection)
             sideAnimationTrack = loadedAnimation
             loadedAnimation.Priority = Enum.AnimationPriority.Action
             pcall(function() loadedAnimation.Looped = false end)
-            loadedAnimation:Play()
+            pcall(function() loadedAnimation:Play() end)
         end
 
         delay(0.7, function()
@@ -298,10 +291,11 @@ local function findNearestTarget(maxRange)
     local rootPosition = HumanoidRootPart.Position
 
     for _, player in pairs(PlayersService:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-            local playerHumanoid = player.Character:FindFirstChild("Humanoid")
-            if playerHumanoid and playerHumanoid.Health > 0 then
-                local distance = (player.Character.HumanoidRootPart.Position - rootPosition).Magnitude
+        if player ~= LocalPlayer and player.Character then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if rootPart and humanoid and humanoid.Health > 0 then
+                local distance = (rootPart.Position - rootPosition).Magnitude
                 if distance < nearestDistance and distance <= maxRange then
                     nearestTarget = player.Character
                     nearestDistance = distance
@@ -311,13 +305,16 @@ local function findNearestTarget(maxRange)
     end
 
     for _, descendant in pairs(WorkspaceService:GetDescendants()) do
-        if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") and not PlayersService:GetPlayerFromCharacter(descendant) then
-            local npcHumanoid = descendant:FindFirstChild("Humanoid")
-            if npcHumanoid and npcHumanoid.Health > 0 then
-                local distance = (descendant.HumanoidRootPart.Position - rootPosition).Magnitude
-                if distance < nearestDistance and distance <= maxRange then
-                    nearestTarget = descendant
-                    nearestDistance = distance
+        if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") then
+            if not PlayersService:GetPlayerFromCharacter(descendant) then
+                local npcHumanoid = descendant:FindFirstChild("Humanoid")
+                local npcRoot = descendant:FindFirstChild("HumanoidRootPart")
+                if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
+                    local distance = (npcRoot.Position - rootPosition).Magnitude
+                    if distance < nearestDistance and distance <= maxRange then
+                        nearestTarget = descendant
+                        nearestDistance = distance
+                    end
                 end
             end
         end
@@ -382,6 +379,7 @@ end
 local function aimCharacterAtTarget(targetPosition, lerpFactor)
     lerpFactor = lerpFactor or 0.7
     pcall(function()
+        if not HumanoidRootPart or not HumanoidRootPart.Parent then return end
         local characterPosition = HumanoidRootPart.Position
         local characterLookVector = HumanoidRootPart.CFrame.LookVector
         local directionToTarget = targetPosition - characterPosition
@@ -410,16 +408,16 @@ local function isBlockedAnimationPlaying()
     if not animator then return false end
     
     for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-        if track and track.IsPlaying then
+        if track and track.IsPlaying and track.Animation then
             local animId = track.Animation.AnimationId
-            if string.find(animId, tostring(BLOCKED_ANIMATION_ID)) then
+            if animId and string.find(animId, tostring(BLOCKED_ANIMATION_ID)) then
                 return true
             end
         end
     end
     return false
 end
---// SNIPPET 2B - DASH LOGIC PART 2 - MOVEMENT & COOLDOWN
+--// SNIPPET 2B - DASH MOVEMENT & COOLDOWN
 
 local m1ToggleEnabled = false
 local dashToggleEnabled = false
@@ -434,6 +432,8 @@ local function communicateWithServer(communicationData)
 end
 
 local function performDashMovement(targetRootPart, dashSpeed)
+    if not targetRootPart or not HumanoidRootPart then return end
+    
     dashSpeed = dashSpeed or DASH_SPEED
     local attachment = Instance.new("Attachment")
     attachment.Name = "DashAttach"
@@ -470,8 +470,10 @@ local function performDashMovement(targetRootPart, dashSpeed)
     end
 
     pcall(function()
-        dashSound:Stop()
-        dashSound:Play()
+        if dashSound then
+            dashSound:Stop()
+            dashSound:Play()
+        end
     end)
 
     local isActive = true
@@ -498,17 +500,20 @@ local function performDashMovement(targetRootPart, dashSpeed)
             else
                 isActive = false
                 heartbeatConnection:Disconnect()
-                pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
+                pcall(function() if linearVelocity and linearVelocity.Parent then linearVelocity:Destroy() end end)
+                pcall(function() if attachment and attachment.Parent then attachment:Destroy() end end)
             end
         else
             isActive = false
-            heartbeatConnection:Disconnect()
-            pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
+            if heartbeatConnection then heartbeatConnection:Disconnect() end
+            pcall(function() if linearVelocity and linearVelocity.Parent then linearVelocity:Destroy() end end)
+            pcall(function() if attachment and attachment.Parent then attachment:Destroy() end end)
         end
     end)
 end
 
 local function smoothlyAimAtTarget(targetRootPart, duration)
+    if not targetRootPart then return end
     duration = duration or CAMERA_FOLLOW_DELAY
     if targetRootPart and targetRootPart.Parent then
         local startTime = tick()
@@ -525,16 +530,18 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
                 end)
                 local predictedPosition = targetPosition + Vector3.new(targetVelocity.X, 0, targetVelocity.Z) * VELOCITY_PREDICTION_FACTOR
                 pcall(function()
-                    local characterPosition = HumanoidRootPart.Position
-                    local characterLookVector = HumanoidRootPart.CFrame.LookVector
-                    local directionToTarget = predictedPosition - characterPosition
-                    local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-                    if horizontalDirection.Magnitude < 0.001 then
-                        horizontalDirection = Vector3.new(1, 0, 0)
+                    if HumanoidRootPart and HumanoidRootPart.Parent then
+                        local characterPosition = HumanoidRootPart.Position
+                        local characterLookVector = HumanoidRootPart.CFrame.LookVector
+                        local directionToTarget = predictedPosition - characterPosition
+                        local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
+                        if horizontalDirection.Magnitude < 0.001 then
+                            horizontalDirection = Vector3.new(1, 0, 0)
+                        end
+                        local targetDirection = horizontalDirection.Unit
+                        local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
+                        HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                     end
-                    local targetDirection = horizontalDirection.Unit
-                    local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
-                    HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                 end)
                 if progress >= 1 then aimTweenConnection:Disconnect() end
             else
@@ -545,7 +552,8 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
 end
 
 local function performCircularDash(targetCharacter)
-    if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
+    if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
+    if isDashing or isCharacterDisabled() then return end
     
     if isBlockedAnimationPlaying() then
         notify("Blocked", "Cannot dash while animating")
@@ -581,6 +589,8 @@ local function performCircularDash(targetCharacter)
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
     local targetRoot = targetCharacter.HumanoidRootPart
+
+    if not targetRoot then return end
 
     if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
@@ -637,6 +647,11 @@ local function performCircularDash(targetCharacter)
         end
 
         movementConnection = RunService.Heartbeat:Connect(function()
+            if not Character or not HumanoidRootPart then 
+                movementConnection:Disconnect()
+                return 
+            end
+            
             local currentTime = tick()
             local progress = math.clamp((currentTime - startTime) / dashDuration, 0, 1)
             local easedProgress = easeInOutCubic(progress)
@@ -711,7 +726,7 @@ InputService.InputBegan:Connect(function(inp, gp)
         end
     end
 end)
---// SNIPPET 3 - GUI + ALL TABS - COMPLETE & RESTORED
+--// SNIPPET 3 - GUI SETUP
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -1267,34 +1282,8 @@ dashIcon.Size = UDim2.new(0, _G.dashButtonSize - 15, 0, _G.dashButtonSize - 15)
 dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dashButtonSize - 15) / 2)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
-dashIcon.ZIndex = 101local dashBtn = Instance.new("Frame")
-dashBtn.Name = "DashButton_Final"
-dashBtn.Size = UDim2.new(0, _G.dashButtonSize, 0, _G.dashButtonSize)
-dashBtn.Position = UDim2.new(1, -(_G.dashButtonSize + 15), 0.5, -_G.dashButtonSize / 2)
-dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-dashBtn.BorderSizePixel = 0
-dashBtn.Parent = gui
-dashBtn.Active = true
-dashBtn.ZIndex = 100
-
-Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
-
-local dashGrad = Instance.new("UIGradient", dashBtn)
-dashGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 0, 0)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 0, 0))
-})
-dashGrad.Rotation = 45
-
-local dashIcon = Instance.new("ImageLabel")
-dashIcon.BackgroundTransparency = 1
-dashIcon.Size = UDim2.new(0, _G.dashButtonSize - 15, 0, _G.dashButtonSize - 15)
-dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dashButtonSize - 15) / 2)
-dashIcon.Image = "rbxassetid://12443244342"
-dashIcon.Parent = dashBtn
 dashIcon.ZIndex = 101
---// SNIPPET 4 - BUTTON LOGIC + TARGET LOCKING (FIXED)
+--// SNIPPET 4 - BUTTON LOGIC & TARGET LOCKING
 
 local function notifyGui(text)
     pcall(function()
@@ -1313,10 +1302,12 @@ local function applyButtonSize(newSize)
         return false
     end
     _G.dashButtonSize = sizeNum
-    dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
-    dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
-    dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
-    dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
+    if dashBtn and dashBtn.Parent then
+        dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
+        dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
+        dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
+        dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
+    end
     notifyGui("Button size set to " .. sizeNum)
     return true
 end
@@ -1332,7 +1323,9 @@ local function applyKeybind(keyName)
     local keycode = keyMap[upperKey]
     if keycode then
         _G.dashKeybind = keycode
-        keyInfo1KB.Text = "Current key: " .. upperKey
+        if keyInfo1KB then
+            keyInfo1KB.Text = "Current key: " .. upperKey
+        end
         notifyGui("Keybind set to " .. upperKey)
         return true
     else
@@ -1353,7 +1346,6 @@ local function onPlayerDoubleClick(player)
     
     local timeSinceLastClick = tick() - lastClickTime[player]
     if timeSinceLastClick < DOUBLE_CLICK_THRESHOLD then
-        -- TOGGLE: if already locked, unlock; otherwise lock
         if forcedLockedPlayer == player then
             forcedLockedPlayer = nil
             removeRedChamFromPlayer(player)
@@ -1368,7 +1360,7 @@ local function onPlayerDoubleClick(player)
     end
 end
 
--- Create player ESP buttons (invisible, clickable)
+-- Create player ESP buttons
 local espButtons = {}
 
 local function createESPButtonForPlayer(player)
@@ -1389,7 +1381,9 @@ local function createESPButtonForPlayer(player)
     
     local function updateESPButton()
         if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            espBtn:Destroy()
+            if espBtn and espBtn.Parent then
+                espBtn:Destroy()
+            end
             espButtons[player] = nil
             return
         end
@@ -1432,10 +1426,10 @@ PlayersService.PlayerAdded:Connect(function(player)
 end)
 
 PlayersService.PlayerRemoving:Connect(function(player)
-    if espButtons[player] then
+    if espButtons[player] and espButtons[player].button and espButtons[player].button.Parent then
         espButtons[player].button:Destroy()
-        espButtons[player] = nil
     end
+    espButtons[player] = nil
     if forcedLockedPlayer == player then
         forcedLockedPlayer = nil
     end
@@ -1443,6 +1437,8 @@ end)
 
 -- COOLDOWN LABEL UPDATE
 RunService.Heartbeat:Connect(function()
+    if not cooldownLabel or not cooldownLabel.Parent then return end
+    
     local timeSinceLastDash = tick() - lastButtonPressTime
     local cooldownRemaining = math.max(0, _G.dashCooldown - timeSinceLastDash)
     
@@ -1463,135 +1459,339 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- Button connections
-lockButton.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    dashButtonLocked = not dashButtonLocked
-    
-    if dashButtonLocked then
-        lockButton.Text = "🔒 Locked"
-        notifyGui("All elements locked")
-    else
-        lockButton.Text = "🔓 Unlocked"
-        notifyGui("All elements unlocked")
-    end
-end)
-
-refreshBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if forcedLockedPlayer then
-        removeRedChamFromPlayer(forcedLockedPlayer)
-    end
-    forcedLockedPlayer = nil
-    notifyGui("Target lock cleared")
-end)
-
-dashBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        dashClickSound:Play()
-        local target = getCurrentTarget()
-        if target then
-            performCircularDash(target)
+if lockButton then
+    lockButton.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        dashButtonLocked = not dashButtonLocked
+        
+        if dashButtonLocked then
+            lockButton.Text = "🔒 Locked"
+            notifyGui("All elements locked")
         else
-            notifyGui("No target in range!")
+            lockButton.Text = "🔓 Unlocked"
+            notifyGui("All elements unlocked")
         end
-    end
-end)
+    end)
+end
 
-closeBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    task.wait(0.3)
-    mainFrame.Visible = false
-    openButton.Visible = true
-    lockButton.Visible = true
-    refreshBtn.Visible = true
-end)
+if refreshBtn then
+    refreshBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if forcedLockedPlayer then
+            removeRedChamFromPlayer(forcedLockedPlayer)
+        end
+        forcedLockedPlayer = nil
+        notifyGui("Target lock cleared")
+    end)
+end
 
-minimizeBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    task.wait(0.3)
-    mainFrame.Visible = false
-    openButton.Visible = true
-    lockButton.Visible = true
-    refreshBtn.Visible = true
-end)
+if dashBtn then
+    dashBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dashClickSound then dashClickSound:Play() end
+            local target = getCurrentTarget()
+            if target then
+                performCircularDash(target)
+            else
+                notifyGui("No target in range!")
+            end
+        end
+    end)
+end
 
-openButton.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    openButton.Visible = false
-    lockButton.Visible = false
-    refreshBtn.Visible = false
-    mainFrame.Visible = true
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-end)
+if closeBtn then
+    closeBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        task.wait(0.3)
+        if mainFrame then mainFrame.Visible = false end
+        if openButton then openButton.Visible = true end
+        if lockButton then lockButton.Visible = true end
+        if refreshBtn then refreshBtn.Visible = true end
+    end)
+end
 
-settingsBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    settingsOverlay.Visible = not settingsOverlay.Visible
-end)
+if minimizeBtn then
+    minimizeBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        task.wait(0.3)
+        if mainFrame then mainFrame.Visible = false end
+        if openButton then openButton.Visible = true end
+        if lockButton then lockButton.Visible = true end
+        if refreshBtn then refreshBtn.Visible = true end
+    end)
+end
 
-settingsCloseBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    settingsOverlay.Visible = false
-end)
+if openButton then
+    openButton.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        openButton.Visible = false
+        if lockButton then lockButton.Visible = false end
+        if refreshBtn then refreshBtn.Visible = false end
+        if mainFrame then mainFrame.Visible = true end
+        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+    end)
+end
 
-keybindsInfoBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    keybindsOverlay.Visible = not keybindsOverlay.Visible
-end)
+if settingsBtn then
+    settingsBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if settingsOverlay then
+            settingsOverlay.Visible = not settingsOverlay.Visible
+        end
+    end)
+end
 
-keybindsCloseBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    keybindsOverlay.Visible = false
-end)
+if settingsCloseBtn then
+    settingsCloseBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if settingsOverlay then settingsOverlay.Visible = false end
+    end)
+end
 
-sizeTextbox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then
-        applyButtonSize(sizeTextbox.Text)
-    end
-end)
+if keybindsInfoBtn then
+    keybindsInfoBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if keybindsOverlay then
+            keybindsOverlay.Visible = not keybindsOverlay.Visible
+        end
+    end)
+end
 
-keybindTextbox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then
-        applyKeybind(keybindTextbox.Text)
-    end
-end)
+if keybindsCloseBtn then
+    keybindsCloseBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if keybindsOverlay then keybindsOverlay.Visible = false end
+    end)
+end
 
-discordBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if setclipboard then
-        setclipboard("https://discord.gg/YFf3rdXbUf")
-        notifyGui("Discord copied!")
-    else
-        notifyGui("Discord: discord.gg/YFf3rdXbUf")
-    end
-end)
+if sizeTextbox then
+    sizeTextbox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            applyButtonSize(sizeTextbox.Text)
+        end
+    end)
+end
 
-ytBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if setclipboard then
-        setclipboard("https://youtube.com/@waspire")
-        notifyGui("YouTube copied!")
-    else
-        notifyGui("YouTube: youtube.com/@waspire")
-    end
-end)
+if keybindTextbox then
+    keybindTextbox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            applyKeybind(keybindTextbox.Text)
+        end
+    end)
+end
 
-mainFrame.Visible = true
+if discordBtn then
+    discordBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if setclipboard then
+            setclipboard("https://discord.gg/YFf3rdXbUf")
+            notifyGui("Discord copied!")
+        else
+            notifyGui("Discord: discord.gg/YFf3rdXbUf")
+        end
+    end)
+end
+
+if ytBtn then
+    ytBtn.MouseButton1Click:Connect(function()
+        if uiClickSound then uiClickSound:Play() end
+        if setclipboard then
+            setclipboard("https://youtube.com/@waspire")
+            notifyGui("YouTube copied!")
+        else
+            notifyGui("YouTube: youtube.com/@waspire")
+        end
+    end)
+end
+
+if mainFrame then mainFrame.Visible = true end
 TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
 TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
 TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
 
 task.delay(0.1, function()
-    loadSound:Play()
+    if loadSound then loadSound:Play() end
+end)
+--// SNIPPET 5 - DRAGGING SYSTEM
+
+-- Make main frame draggable
+local mainDragging = false
+local mainDragStart = nil
+local mainFrameStart = nil
+
+if mainFrame then
+    mainFrame.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            mainDragging = true
+            mainDragStart = input.Position
+            mainFrameStart = mainFrame.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if mainDragging and input.UserInputType == Enum.UserInputType.MouseMovement and mainFrame then
+        local delta = input.Position - mainDragStart
+        mainFrame.Position = mainFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
 end)
 
-print("subscribe to Waspire :)")
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        mainDragging = false
+    end
+end)
+
+-- Make dash button draggable (right-click)
+local dashDragging = false
+local dashDragStart = nil
+local dashFrameStart = nil
+
+if dashBtn then
+    dashBtn.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            dashDragging = true
+            dashDragStart = input.Position
+            dashFrameStart = dashBtn.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if dashDragging and input.UserInputType == Enum.UserInputType.MouseMovement and dashBtn then
+        local delta = input.Position - dashDragStart
+        dashBtn.Position = dashFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        dashDragging = false
+    end
+end)
+
+-- Make open button draggable
+local openDragging = false
+local openDragStart = nil
+local openFrameStart = nil
+
+if openButton then
+    openButton.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            openDragging = true
+            openDragStart = input.Position
+            openFrameStart = openButton.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if openDragging and input.UserInputType == Enum.UserInputType.MouseMovement and openButton then
+        local delta = input.Position - openDragStart
+        openButton.Position = openFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        openDragging = false
+    end
+end)
+
+-- Make lock button draggable
+local lockDragging = false
+local lockDragStart = nil
+local lockFrameStart = nil
+
+if lockButton then
+    lockButton.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            lockDragging = true
+            lockDragStart = input.Position
+            lockFrameStart = lockButton.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if lockDragging and input.UserInputType == Enum.UserInputType.MouseMovement and lockButton then
+        local delta = input.Position - lockDragStart
+        lockButton.Position = lockFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        lockDragging = false
+    end
+end)
+
+-- Make refresh button draggable
+local refreshDragging = false
+local refreshDragStart = nil
+local refreshFrameStart = nil
+
+if refreshBtn then
+    refreshBtn.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            refreshDragging = true
+            refreshDragStart = input.Position
+            refreshFrameStart = refreshBtn.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if refreshDragging and input.UserInputType == Enum.UserInputType.MouseMovement and refreshBtn then
+        local delta = input.Position - refreshDragStart
+        refreshBtn.Position = refreshFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        refreshDragging = false
+    end
+end)
+
+-- Make cooldown label draggable
+local cooldownDragging = false
+local cooldownDragStart = nil
+local cooldownFrameStart = nil
+
+if cooldownLabel then
+    cooldownLabel.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            cooldownDragging = true
+            cooldownDragStart = input.Position
+            cooldownFrameStart = cooldownLabel.Position
+        end
+    end)
+end
+
+InputService.InputChanged:Connect(function(input, gp)
+    if cooldownDragging and input.UserInputType == Enum.UserInputType.MouseMovement and cooldownLabel then
+        local delta = input.Position - cooldownDragStart
+        cooldownLabel.Position = cooldownFrameStart + UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+InputService.InputEnded:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        cooldownDragging = false
+    end
+end)
