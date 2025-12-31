@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP WITH PROPER ERROR HANDLING
+--// SNIPPET 1 - CORE SETUP WITH PROPER TARGET LOCKING & RED CHAM OVERLAY
 
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
@@ -45,7 +45,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
--- FIXED: Only use valid animation IDs (no invalid ones)
+-- VALID ANIMATION IDS ONLY
 local ANIMATION_IDS = {
     Left = 10480796021,
     Right = 10480793962,
@@ -83,101 +83,93 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- CLEAN RED CHAM ESP SYSTEM
-local chammedPlayers = {}
-local forcedLockedPlayer = nil
+-- RED CHAM OVERLAY SYSTEM (75% TRANSPARENCY OVERLAY, NOT PLAYER)
+local chamOverlays = {}
+local doubleClickLocked = nil
 
-local function addRedChamToPlayer(player)
+local function createChamOverlay(player)
     if not player or not player.Character then return end
-    if chammedPlayers[player] then return end
+    if chamOverlays[player] then return end
     
-    chammedPlayers[player] = {}
-    
+    chamOverlays[player] = {}
     local char = player.Character
+    
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part ~= char:FindFirstChild("HumanoidRootPart") then
-            local originalColor = part.Color
-            local originalTransparency = part.Transparency
-            local originalMaterial = part.Material
+            local overlay = Instance.new("Part")
+            overlay.Name = "ChamOverlay"
+            overlay.Shape = Enum.PartType.Block
+            overlay.CanCollide = false
+            overlay.CanQuery = false
+            overlay.CFrame = part.CFrame
+            overlay.Size = part.Size
+            overlay.Color = Color3.fromRGB(255, 0, 0)
+            overlay.Transparency = 0.75
+            overlay.Material = Enum.Material.SmoothPlastic
+            overlay.TopSurface = Enum.SurfaceType.Smooth
+            overlay.BottomSurface = Enum.SurfaceType.Smooth
+            overlay.Parent = part
             
-            chammedPlayers[player][part] = {
-                Color = originalColor,
-                Transparency = originalTransparency,
-                Material = originalMaterial
-            }
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = part
+            weld.Part1 = overlay
+            weld.Parent = overlay
             
-            part.Color = Color3.fromRGB(255, 0, 0)
-            part.Transparency = 0.75
-            part.Material = Enum.Material.SmoothPlastic
+            table.insert(chamOverlays[player], overlay)
         end
     end
 end
 
-local function removeRedChamFromPlayer(player)
-    if not chammedPlayers[player] then return end
+local function removeChamOverlay(player)
+    if not chamOverlays[player] then return end
     
-    for part, originalData in pairs(chammedPlayers[player]) do
-        if part and part.Parent then
-            part.Color = originalData.Color
-            part.Transparency = originalData.Transparency
-            part.Material = originalData.Material
+    for _, overlay in pairs(chamOverlays[player]) do
+        if overlay and overlay.Parent then
+            overlay:Destroy()
         end
     end
     
-    chammedPlayers[player] = nil
+    chamOverlays[player] = nil
 end
 
-local function updateEnemyCham()
-    if forcedLockedPlayer then
-        for player in pairs(chammedPlayers) do
-            if player ~= forcedLockedPlayer then
-                removeRedChamFromPlayer(player)
-            end
-        end
-        if forcedLockedPlayer.Character then
-            addRedChamToPlayer(forcedLockedPlayer)
-        end
-        return
-    end
-    
-    local nearestPlayer, nearestDistance = nil, math.huge
-    if not HumanoidRootPart then return end
-    
+local function findNearestTarget(maxRange)
+    maxRange = maxRange or MAX_TARGET_RANGE
+    local nearestTarget, nearestDistance = nil, math.huge
+    if not HumanoidRootPart then return nil end
+    local rootPosition = HumanoidRootPart.Position
+
     for _, player in pairs(PlayersService:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
             local targetHumanoid = player.Character:FindFirstChild("Humanoid")
             if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-                local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
-                if distance < nearestDistance and distance <= MAX_TARGET_RANGE then
-                    nearestPlayer = player
+                local distance = (targetRoot.Position - rootPosition).Magnitude
+                if distance < nearestDistance and distance <= maxRange then
+                    nearestTarget = player.Character
                     nearestDistance = distance
                 end
             end
         end
     end
-    
-    for player in pairs(chammedPlayers) do
-        if player ~= nearestPlayer then
-            removeRedChamFromPlayer(player)
+
+    for _, descendant in pairs(WorkspaceService:GetDescendants()) do
+        if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") then
+            if not PlayersService:GetPlayerFromCharacter(descendant) then
+                local npcHumanoid = descendant:FindFirstChild("Humanoid")
+                local npcRoot = descendant:FindFirstChild("HumanoidRootPart")
+                if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
+                    local distance = (npcRoot.Position - rootPosition).Magnitude
+                    if distance < nearestDistance and distance <= maxRange then
+                        nearestTarget = descendant
+                        nearestDistance = distance
+                    end
+                end
+            end
         end
     end
-    
-    if nearestPlayer then
-        addRedChamToPlayer(nearestPlayer)
-    end
+
+    return nearestTarget, nearestDistance
 end
-
-RunService.Heartbeat:Connect(function()
-    updateEnemyCham()
-end)
-
-PlayersService.PlayerRemoving:Connect(function(player)
-    removeRedChamFromPlayer(player)
-    if forcedLockedPlayer == player then
-        forcedLockedPlayer = nil
-    end
-end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -266,9 +258,10 @@ local function playSideAnimation(isLeftDirection)
         local success, loadedAnimation = pcall(function()
             return animator:LoadAnimation(animationInstance)
         end)
+        
         if success and loadedAnimation then
             sideAnimationTrack = loadedAnimation
-            loadedAnimation.Priority = Enum.AnimationPriority.Action
+            pcall(function() loadedAnimation.Priority = Enum.AnimationPriority.Action end)
             pcall(function() loadedAnimation.Looped = false end)
             pcall(function() loadedAnimation:Play() end)
         end
@@ -284,54 +277,11 @@ local function playSideAnimation(isLeftDirection)
     end
 end
 
-local function findNearestTarget(maxRange)
-    maxRange = maxRange or MAX_TARGET_RANGE
-    local nearestTarget, nearestDistance = nil, math.huge
-    if not HumanoidRootPart then return nil end
-    local rootPosition = HumanoidRootPart.Position
-
-    for _, player in pairs(PlayersService:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            if rootPart and humanoid and humanoid.Health > 0 then
-                local distance = (rootPart.Position - rootPosition).Magnitude
-                if distance < nearestDistance and distance <= maxRange then
-                    nearestTarget = player.Character
-                    nearestDistance = distance
-                end
-            end
-        end
-    end
-
-    for _, descendant in pairs(WorkspaceService:GetDescendants()) do
-        if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") then
-            if not PlayersService:GetPlayerFromCharacter(descendant) then
-                local npcHumanoid = descendant:FindFirstChild("Humanoid")
-                local npcRoot = descendant:FindFirstChild("HumanoidRootPart")
-                if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
-                    local distance = (npcRoot.Position - rootPosition).Magnitude
-                    if distance < nearestDistance and distance <= maxRange then
-                        nearestTarget = descendant
-                        nearestDistance = distance
-                    end
-                end
-            end
-        end
-    end
-
-    return nearestTarget, nearestDistance
-end
-
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
     local baseMax = 0.10
     return baseMin + (baseMax - baseMin) * clampedValue
-end
-
-local function calculateDashAngle(_degreesSliderValue)
-    return 120
 end
 
 local function calculateDashDistance(_gapSliderValue)
@@ -345,34 +295,32 @@ PlayersService.PlayerRemoving:Connect(function(removedPlayer)
     if lockedTargetPlayer == removedPlayer then
         lockedTargetPlayer = nil
     end
+    if doubleClickLocked and PlayersService:GetPlayerFromCharacter(doubleClickLocked) == removedPlayer then
+        doubleClickLocked = nil
+    end
 end)
 
 local function getCurrentTarget()
-    if forcedLockedPlayer and forcedLockedPlayer.Character and forcedLockedPlayer.Character.Parent then
-        local targetHumanoid = forcedLockedPlayer.Character:FindFirstChild("Humanoid")
-        if targetHumanoid and targetHumanoid.Health > 0 then
-            return forcedLockedPlayer.Character
+    -- IF DOUBLE-CLICK LOCKED, USE THAT (WITH RANGE CHECK)
+    if doubleClickLocked and doubleClickLocked.Parent then
+        local targetRoot = doubleClickLocked:FindFirstChild("HumanoidRootPart")
+        local targetHumanoid = doubleClickLocked:FindFirstChild("Humanoid")
+        
+        if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
+            local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
+            if distance <= MAX_TARGET_RANGE then
+                return doubleClickLocked
+            else
+                -- OUT OF RANGE NOTIFICATION
+                notify("Out of Range", "Locked target is " .. tostring(math.floor(distance * 10) / 10) .. " studs away!")
+                return nil
+            end
+        else
+            doubleClickLocked = nil
         end
-        forcedLockedPlayer = nil
     end
     
-    if lockedTargetPlayer then
-        if lockedTargetPlayer.Character and lockedTargetPlayer.Character.Parent then
-            local targetCharacter = lockedTargetPlayer.Character
-            local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
-            local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-            if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
-                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude > MAX_TARGET_RANGE then
-                    return nil
-                else
-                    return targetCharacter
-                end
-            end
-            lockedTargetPlayer = nil
-        else
-            lockedTargetPlayer = nil
-        end
-    end
+    -- AUTO-TARGET CLOSEST PLAYER
     return findNearestTarget(MAX_TARGET_RANGE)
 end
 
@@ -417,7 +365,7 @@ local function isBlockedAnimationPlaying()
     end
     return false
 end
---// SNIPPET 2B - DASH MOVEMENT & COOLDOWN
+--// SNIPPET 2B - DASH MOVEMENT & COOLDOWN WITH STRICT 3.5 STUD RANGE
 
 local m1ToggleEnabled = false
 local dashToggleEnabled = false
@@ -459,7 +407,7 @@ local function performDashMovement(targetRootPart, dashSpeed)
                 return characterAnimator:LoadAnimation(straightAnimationInstance)
             end)
             if success and loadedAnim then
-                loadedAnim.Priority = Enum.AnimationPriority.Movement
+                pcall(function() loadedAnim.Priority = Enum.AnimationPriority.Movement end)
                 pcall(function() loadedAnim.Looped = false end)
                 pcall(function() loadedAnim:Play() end)
                 straightAnimationTrack = loadedAnim
@@ -567,6 +515,15 @@ local function performCircularDash(targetCharacter)
         return
     end
     
+    -- STRICT 3.5 STUD RANGE CHECK BEFORE DASH
+    local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+    if not targetRoot then return end
+    local distanceToTarget = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
+    if distanceToTarget > MAX_TARGET_RANGE then
+        notify("Out of Range", "Target is too far! (Max: 3.5 studs)")
+        return
+    end
+    
     isDashing = true
     lastButtonPressTime = currentTime
 
@@ -585,14 +542,11 @@ local function performCircularDash(targetCharacter)
     end
 
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
-    local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
+    local dashAngle = 120
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
-    local targetRoot = targetCharacter.HumanoidRootPart
 
-    if not targetRoot then return end
-
-    if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
+    if MIN_TARGET_DISTANCE <= distanceToTarget then
         performDashMovement(targetRoot, DASH_SPEED)
     end
 
@@ -650,6 +604,18 @@ local function performCircularDash(targetCharacter)
             if not Character or not HumanoidRootPart then 
                 movementConnection:Disconnect()
                 return 
+            end
+            
+            -- CONTINUOUS RANGE CHECK DURING DASH
+            if targetRoot and targetRoot.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
+                local currentDistance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
+                if currentDistance > MAX_TARGET_RANGE then
+                    movementConnection:Disconnect()
+                    notify("Out of Range", "Target left range during dash!")
+                    isDashing = false
+                    restoreAutoRotate()
+                    return
+                end
             end
             
             local currentTime = tick()
@@ -726,7 +692,7 @@ InputService.InputBegan:Connect(function(inp, gp)
         end
     end
 end)
---// SNIPPET 3 - GUI SETUP
+--// SNIPPET 3 - GUI SETUP WITH WORKING SETTINGS & KEYBINDS TABS
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -950,10 +916,10 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay
+-- Settings overlay WITH PROPER CONTENT
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
-settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
+settingsOverlay.Size = UDim2.new(0, 300, 0, 380)
 settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
 settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 settingsOverlay.BackgroundTransparency = 0
@@ -1022,61 +988,21 @@ settingsCloseBtn.ZIndex = 100
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
 
-local keybindFrame = Instance.new("Frame")
-keybindFrame.Size = UDim2.new(1, -32, 0, 110)
-keybindFrame.Position = UDim2.new(0, 16, 0, 60)
-keybindFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindFrame.BorderSizePixel = 0
-keybindFrame.Parent = settingsOverlay
-Instance.new("UICorner", keybindFrame).CornerRadius = UDim.new(0, 14)
-
-local keyTitle = Instance.new("TextLabel")
-keyTitle.Size = UDim2.new(1, -20, 0, 30)
-keyTitle.Position = UDim2.new(0, 10, 0, 8)
-keyTitle.BackgroundTransparency = 1
-keyTitle.Text = "Keybind Info"
-keyTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-keyTitle.TextSize = 18
-keyTitle.Font = Enum.Font.GothamBold
-keyTitle.TextXAlignment = Enum.TextXAlignment.Left
-keyTitle.Parent = keybindFrame
-
-local keyInfo1 = Instance.new("TextLabel")
-keyInfo1.Size = UDim2.new(1, -20, 0, 24)
-keyInfo1.Position = UDim2.new(0, 10, 0, 40)
-keyInfo1.BackgroundTransparency = 1
-keyInfo1.Text = "PC Dash Key: E"
-keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo1.TextSize = 15
-keyInfo1.Font = Enum.Font.Gotham
-keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo1.Parent = keybindFrame
-
-local keyInfo2 = Instance.new("TextLabel")
-keyInfo2.Size = UDim2.new(1, -20, 0, 24)
-keyInfo2.Position = UDim2.new(0, 10, 0, 66)
-keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "Mobile Button :)"
-keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo2.TextSize = 15
-keyInfo2.Font = Enum.Font.Gotham
-keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo2.Parent = keybindFrame
-
+-- BUTTON SIZE SECTION
 local sizeLabel = Instance.new("TextLabel")
-sizeLabel.Size = UDim2.new(1, -32, 0, 22)
-sizeLabel.Position = UDim2.new(0, 16, 0, 180)
+sizeLabel.Size = UDim2.new(1, -32, 0, 25)
+sizeLabel.Position = UDim2.new(0, 16, 0, 55)
 sizeLabel.BackgroundTransparency = 1
 sizeLabel.Text = "Button Size (50-150):"
 sizeLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-sizeLabel.TextSize = 14
+sizeLabel.TextSize = 15
 sizeLabel.Font = Enum.Font.GothamBold
 sizeLabel.TextXAlignment = Enum.TextXAlignment.Left
 sizeLabel.Parent = settingsOverlay
 
 local sizeTextbox = Instance.new("TextBox")
-sizeTextbox.Size = UDim2.new(0, 80, 0, 26)
-sizeTextbox.Position = UDim2.new(0, 190, 0, 177)
+sizeTextbox.Size = UDim2.new(1, -32, 0, 35)
+sizeTextbox.Position = UDim2.new(0, 16, 0, 82)
 sizeTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 sizeTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
 sizeTextbox.PlaceholderText = "90"
@@ -1088,11 +1014,85 @@ sizeTextbox.Font = Enum.Font.Gotham
 sizeTextbox.Parent = settingsOverlay
 Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 8)
 
--- Keybinds overlay
+-- COOLDOWN SECTION
+local cooldownLabel2 = Instance.new("TextLabel")
+cooldownLabel2.Size = UDim2.new(1, -32, 0, 25)
+cooldownLabel2.Position = UDim2.new(0, 16, 0, 135)
+cooldownLabel2.BackgroundTransparency = 1
+cooldownLabel2.Text = "Dash Cooldown (1-5s):"
+cooldownLabel2.TextColor3 = Color3.fromRGB(230, 230, 230)
+cooldownLabel2.TextSize = 15
+cooldownLabel2.Font = Enum.Font.GothamBold
+cooldownLabel2.TextXAlignment = Enum.TextXAlignment.Left
+cooldownLabel2.Parent = settingsOverlay
+
+local cooldownTextbox = Instance.new("TextBox")
+cooldownTextbox.Size = UDim2.new(1, -32, 0, 35)
+cooldownTextbox.Position = UDim2.new(0, 16, 0, 162)
+cooldownTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+cooldownTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+cooldownTextbox.PlaceholderText = "2.0"
+cooldownTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+cooldownTextbox.BorderSizePixel = 0
+cooldownTextbox.Text = tostring(_G.dashCooldown)
+cooldownTextbox.TextSize = 14
+cooldownTextbox.Font = Enum.Font.Gotham
+cooldownTextbox.Parent = settingsOverlay
+Instance.new("UICorner", cooldownTextbox).CornerRadius = UDim.new(0, 8)
+
+-- DASH DISTANCE SECTION
+local distanceLabel = Instance.new("TextLabel")
+distanceLabel.Size = UDim2.new(1, -32, 0, 25)
+distanceLabel.Position = UDim2.new(0, 16, 0, 215)
+distanceLabel.BackgroundTransparency = 1
+distanceLabel.Text = "Dash Distance Gap:"
+distanceLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+distanceLabel.TextSize = 15
+distanceLabel.Font = Enum.Font.GothamBold
+distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+distanceLabel.Parent = settingsOverlay
+
+local distanceTextbox = Instance.new("TextBox")
+distanceTextbox.Size = UDim2.new(1, -32, 0, 35)
+distanceTextbox.Position = UDim2.new(0, 16, 0, 242)
+distanceTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+distanceTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+distanceTextbox.PlaceholderText = "0.5"
+distanceTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+distanceTextbox.BorderSizePixel = 0
+distanceTextbox.Text = tostring(_G.dashDistance)
+distanceTextbox.TextSize = 14
+distanceTextbox.Font = Enum.Font.Gotham
+distanceTextbox.Parent = settingsOverlay
+Instance.new("UICorner", distanceTextbox).CornerRadius = UDim.new(0, 8)
+
+-- INFO BOX
+local infoBox = Instance.new("Frame")
+infoBox.Size = UDim2.new(1, -32, 0, 70)
+infoBox.Position = UDim2.new(0, 16, 0, 295)
+infoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+infoBox.BorderSizePixel = 0
+infoBox.Parent = settingsOverlay
+Instance.new("UICorner", infoBox).CornerRadius = UDim.new(0, 8)
+
+local infoText = Instance.new("TextLabel")
+infoText.Size = UDim2.new(1, -12, 1, -12)
+infoText.Position = UDim2.new(0, 6, 0, 6)
+infoText.BackgroundTransparency = 1
+infoText.Text = "• Size: Button pixel size\n• Cooldown: Wait time between dashes\n• Distance: Orbital distance gap"
+infoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+infoText.TextSize = 12
+infoText.Font = Enum.Font.Gotham
+infoText.TextXAlignment = Enum.TextXAlignment.Left
+infoText.TextYAlignment = Enum.TextYAlignment.Top
+infoText.TextWrapped = true
+infoText.Parent = infoBox
+
+-- Keybinds overlay WITH PROPER CONTENT
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
-keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
-keybindsOverlay.Position = UDim2.new(0.5, -110, 0.3, 0)
+keybindsOverlay.Size = UDim2.new(0, 320, 0, 380)
+keybindsOverlay.Position = UDim2.new(0.5, -160, 0.3, 0)
 keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 keybindsOverlay.BackgroundTransparency = 0
 keybindsOverlay.BorderSizePixel = 0
@@ -1139,7 +1139,7 @@ local keybindsTitle = Instance.new("TextLabel")
 keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
 keybindsTitle.Position = UDim2.new(0, 16, 0, 5)
 keybindsTitle.BackgroundTransparency = 1
-keybindsTitle.Text = "Keybinds"
+keybindsTitle.Text = "Keybinds & Info"
 keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 keybindsTitle.TextSize = 21
 keybindsTitle.Font = Enum.Font.GothamBold
@@ -1160,52 +1160,97 @@ keybindsCloseBtn.ZIndex = 100
 keybindsCloseBtn.Parent = keybindsOverlay
 Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
 
-local keybindLabel = Instance.new("TextLabel")
-keybindLabel.Size = UDim2.new(1, -32, 0, 25)
-keybindLabel.Position = UDim2.new(0, 16, 0, 55)
-keybindLabel.BackgroundTransparency = 1
-keybindLabel.Text = "Dash Keybind:"
-keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-keybindLabel.TextSize = 15
-keybindLabel.Font = Enum.Font.GothamBold
-keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
-keybindLabel.Parent = keybindsOverlay
+-- DASH KEYBIND SECTION
+local dashKeyLabel = Instance.new("TextLabel")
+dashKeyLabel.Size = UDim2.new(1, -32, 0, 25)
+dashKeyLabel.Position = UDim2.new(0, 16, 0, 55)
+dashKeyLabel.BackgroundTransparency = 1
+dashKeyLabel.Text = "Dash Keybind (PC):"
+dashKeyLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+dashKeyLabel.TextSize = 15
+dashKeyLabel.Font = Enum.Font.GothamBold
+dashKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+dashKeyLabel.Parent = keybindsOverlay
 
-local keybindTextbox = Instance.new("TextBox")
-keybindTextbox.Size = UDim2.new(1, -32, 0, 30)
-keybindTextbox.Position = UDim2.new(0, 16, 0, 80)
-keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-keybindTextbox.PlaceholderText = "E, Q, R..."
-keybindTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-keybindTextbox.BorderSizePixel = 0
-keybindTextbox.Text = "E"
-keybindTextbox.TextSize = 14
-keybindTextbox.Font = Enum.Font.Gotham
-keybindTextbox.Parent = keybindsOverlay
-Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 8)
+local dashKeyTextbox = Instance.new("TextBox")
+dashKeyTextbox.Size = UDim2.new(1, -32, 0, 35)
+dashKeyTextbox.Position = UDim2.new(0, 16, 0, 82)
+dashKeyTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+dashKeyTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+dashKeyTextbox.PlaceholderText = "E, Q, R, X, C, V, F, G, Z, T, Y, U"
+dashKeyTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+dashKeyTextbox.BorderSizePixel = 0
+dashKeyTextbox.Text = "E"
+dashKeyTextbox.TextSize = 14
+dashKeyTextbox.Font = Enum.Font.Gotham
+dashKeyTextbox.Parent = keybindsOverlay
+Instance.new("UICorner", dashKeyTextbox).CornerRadius = UDim.new(0, 8)
 
-local keyInfo1KB = Instance.new("TextLabel")
-keyInfo1KB.Size = UDim2.new(1, -32, 0, 24)
-keyInfo1KB.Position = UDim2.new(0, 16, 0, 120)
-keyInfo1KB.BackgroundTransparency = 1
-keyInfo1KB.Text = "Current key: E"
-keyInfo1KB.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo1KB.TextSize = 15
-keyInfo1KB.Font = Enum.Font.Gotham
-keyInfo1KB.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo1KB.Parent = keybindsOverlay
+-- INFO SECTION
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, -32, 0, 25)
+infoLabel.Position = UDim2.new(0, 16, 0, 135)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = "Target Locking:"
+infoLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+infoLabel.TextSize = 15
+infoLabel.Font = Enum.Font.GothamBold
+infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+infoLabel.Parent = keybindsOverlay
 
-local keyInfo2KB = Instance.new("TextLabel")
-keyInfo2KB.Size = UDim2.new(1, -32, 0, 24)
-keyInfo2KB.Position = UDim2.new(0, 16, 0, 146)
-keyInfo2KB.BackgroundTransparency = 1
-keyInfo2KB.Text = "Mobile: red dash button"
-keyInfo2KB.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo2KB.TextSize = 15
-keyInfo2KB.Font = Enum.Font.Gotham
-keyInfo2KB.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo2KB.Parent = keybindsOverlay
+local lockingInfoBox = Instance.new("Frame")
+lockingInfoBox.Size = UDim2.new(1, -32, 0, 95)
+lockingInfoBox.Position = UDim2.new(0, 16, 0, 162)
+lockingInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+lockingInfoBox.BorderSizePixel = 0
+lockingInfoBox.Parent = keybindsOverlay
+Instance.new("UICorner", lockingInfoBox).CornerRadius = UDim.new(0, 8)
+
+local lockingInfoText = Instance.new("TextLabel")
+lockingInfoText.Size = UDim2.new(1, -12, 1, -12)
+lockingInfoText.Position = UDim2.new(0, 6, 0, 6)
+lockingInfoText.BackgroundTransparency = 1
+lockingInfoText.Text = "• Auto-targets closest enemy (3.5 studs max)\n• Double-click on player to LOCK (adds red overlay)\n• Locked player gets 75% red cham\n• Locked target must stay in range\n• Out of range = notification + can't dash"
+lockingInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+lockingInfoText.TextSize = 12
+lockingInfoText.Font = Enum.Font.Gotham
+lockingInfoText.TextXAlignment = Enum.TextXAlignment.Left
+lockingInfoText.TextYAlignment = Enum.TextYAlignment.Top
+lockingInfoText.TextWrapped = true
+lockingInfoText.Parent = lockingInfoBox
+
+-- MOBILE INFO SECTION
+local mobileLabel = Instance.new("TextLabel")
+mobileLabel.Size = UDim2.new(1, -32, 0, 25)
+mobileLabel.Position = UDim2.new(0, 16, 0, 273)
+mobileLabel.BackgroundTransparency = 1
+mobileLabel.Text = "Mobile:"
+mobileLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+mobileLabel.TextSize = 15
+mobileLabel.Font = Enum.Font.GothamBold
+mobileLabel.TextXAlignment = Enum.TextXAlignment.Left
+mobileLabel.Parent = keybindsOverlay
+
+local mobileInfoBox = Instance.new("Frame")
+mobileInfoBox.Size = UDim2.new(1, -32, 0, 60)
+mobileInfoBox.Position = UDim2.new(0, 16, 0, 300)
+mobileInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+mobileInfoBox.BorderSizePixel = 0
+mobileInfoBox.Parent = keybindsOverlay
+Instance.new("UICorner", mobileInfoBox).CornerRadius = UDim.new(0, 8)
+
+local mobileInfoText = Instance.new("TextLabel")
+mobileInfoText.Size = UDim2.new(1, -12, 1, -12)
+mobileInfoText.Position = UDim2.new(0, 6, 0, 6)
+mobileInfoText.BackgroundTransparency = 1
+mobileInfoText.Text = "• Red dash button (right side)\n• Tap to dash at nearest target\n• Drag to reposition button"
+mobileInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+mobileInfoText.TextSize = 12
+mobileInfoText.Font = Enum.Font.Gotham
+mobileInfoText.TextXAlignment = Enum.TextXAlignment.Left
+mobileInfoText.TextYAlignment = Enum.TextYAlignment.Top
+mobileInfoText.TextWrapped = true
+mobileInfoText.Parent = mobileInfoBox
 
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
@@ -1283,7 +1328,7 @@ dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dash
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
 dashIcon.ZIndex = 101
---// SNIPPET 4 - BUTTON LOGIC & TARGET LOCKING
+--// SNIPPET 4 - BUTTON LOGIC WITH DOUBLE-CLICK TARGET LOCKING
 
 local function notifyGui(text)
     pcall(function()
@@ -1312,6 +1357,28 @@ local function applyButtonSize(newSize)
     return true
 end
 
+local function applyCooldown(newCooldown)
+    local cooldownNum = tonumber(newCooldown)
+    if not cooldownNum or cooldownNum < 1 or cooldownNum > 5 then
+        notifyGui("Cooldown must be 1-5 seconds")
+        return false
+    end
+    _G.dashCooldown = cooldownNum
+    notifyGui("Cooldown set to " .. cooldownNum .. "s")
+    return true
+end
+
+local function applyDistance(newDistance)
+    local distanceNum = tonumber(newDistance)
+    if not distanceNum or distanceNum < 0.1 or distanceNum > 20 then
+        notifyGui("Distance must be 0.1-20")
+        return false
+    end
+    _G.dashDistance = distanceNum
+    notifyGui("Dash distance set to " .. distanceNum)
+    return true
+end
+
 local function applyKeybind(keyName)
     local keyMap = {
         ["E"] = Enum.KeyCode.E, ["Q"] = Enum.KeyCode.Q, ["R"] = Enum.KeyCode.R,
@@ -1323,9 +1390,6 @@ local function applyKeybind(keyName)
     local keycode = keyMap[upperKey]
     if keycode then
         _G.dashKeybind = keycode
-        if keyInfo1KB then
-            keyInfo1KB.Text = "Current key: " .. upperKey
-        end
         notifyGui("Keybind set to " .. upperKey)
         return true
     else
@@ -1334,34 +1398,34 @@ local function applyKeybind(keyName)
     end
 end
 
--- FIXED DOUBLE-CLICK TARGET LOCK SYSTEM
+-- DOUBLE-CLICK TARGET LOCKING SYSTEM
 local lastClickTime = {}
 local DOUBLE_CLICK_THRESHOLD = 0.25
+local espButtons = {}
 
 local function onPlayerDoubleClick(player)
     if not lastClickTime[player] then
         lastClickTime[player] = tick()
+        notifyGui("Click again to lock: " .. player.Name)
         return
     end
     
     local timeSinceLastClick = tick() - lastClickTime[player]
     if timeSinceLastClick < DOUBLE_CLICK_THRESHOLD then
-        if forcedLockedPlayer == player then
-            forcedLockedPlayer = nil
-            removeRedChamFromPlayer(player)
+        if doubleClickLocked == player.Character then
+            doubleClickLocked = nil
+            removeChamOverlay(player)
             notifyGui("Unlocked: " .. player.Name)
         else
-            forcedLockedPlayer = player
-            notifyGui("Locked: " .. player.Name)
+            doubleClickLocked = player.Character
+            createChamOverlay(player)
+            notifyGui("Locked: " .. player.Name .. " (Red cham active)")
         end
         lastClickTime[player] = nil
     else
         lastClickTime[player] = tick()
     end
 end
-
--- Create player ESP buttons
-local espButtons = {}
 
 local function createESPButtonForPlayer(player)
     if espButtons[player] then return end
@@ -1430,8 +1494,8 @@ PlayersService.PlayerRemoving:Connect(function(player)
         espButtons[player].button:Destroy()
     end
     espButtons[player] = nil
-    if forcedLockedPlayer == player then
-        forcedLockedPlayer = nil
+    if doubleClickLocked == player.Character then
+        doubleClickLocked = nil
     end
 end)
 
@@ -1458,7 +1522,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Button connections
+-- BUTTON CONNECTIONS
 if lockButton then
     lockButton.MouseButton1Click:Connect(function()
         if uiClickSound then uiClickSound:Play() end
@@ -1477,10 +1541,10 @@ end
 if refreshBtn then
     refreshBtn.MouseButton1Click:Connect(function()
         if uiClickSound then uiClickSound:Play() end
-        if forcedLockedPlayer then
-            removeRedChamFromPlayer(forcedLockedPlayer)
+        if doubleClickLocked then
+            removeChamOverlay(PlayersService:GetPlayerFromCharacter(doubleClickLocked))
         end
-        forcedLockedPlayer = nil
+        doubleClickLocked = nil
         notifyGui("Target lock cleared")
     end)
 end
@@ -1580,10 +1644,26 @@ if sizeTextbox then
     end)
 end
 
-if keybindTextbox then
-    keybindTextbox.FocusLost:Connect(function(enterPressed)
+if cooldownTextbox then
+    cooldownTextbox.FocusLost:Connect(function(enterPressed)
         if enterPressed then
-            applyKeybind(keybindTextbox.Text)
+            applyCooldown(cooldownTextbox.Text)
+        end
+    end)
+end
+
+if distanceTextbox then
+    distanceTextbox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            applyDistance(distanceTextbox.Text)
+        end
+    end)
+end
+
+if dashKeyTextbox then
+    dashKeyTextbox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            applyKeybind(dashKeyTextbox.Text)
         end
     end)
 end
