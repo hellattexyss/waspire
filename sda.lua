@@ -1,6 +1,5 @@
---// COMPLETE SIDE DASH ASSIST v2.1 - FULL FIX (ONE SNIPPET)
+--// SNIPPET 1 - CORE SETUP + ENEMY CHAM SYSTEM
 
--- Cleanup
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     for _, name in ipairs({"SideDashAssistGUI"}) do
@@ -11,11 +10,11 @@ end)
 
 task.wait(0.1)
 
--- Services
 local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local InputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
@@ -28,8 +27,8 @@ local Humanoid = Character:FindFirstChildOfClass("Humanoid")
 
 _G.dashButtonSize = 90
 _G.dashKeybind = Enum.KeyCode.E
-_G.dashCooldown = 2.0
-_G.dashDistance = 0.5
+_G.dashCooldown = 1.5
+_G.dashDistance = 3.5
 
 local function isCharacterDisabled()
     if not (Humanoid and Humanoid.Parent) then return false end
@@ -47,19 +46,17 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
--- VALID ANIMATION IDS ONLY
 local ANIMATION_IDS = {
-    Left = 10480796021,
-    Right = 10480793962,
-    Straight = 10479335397
+    [10449761463] = {Left = 10480796021, Right = 10480793962, Straight = 10479335397},
+    [13076380114] = {Left = 101843860692381, Right = 100087324592640, Straight = 110878031211717}
 }
+local gameId = game.PlaceId
+local currentGameAnimations = ANIMATION_IDS[gameId] or ANIMATION_IDS[13076380114]
+local leftAnimationId = currentGameAnimations.Left
+local rightAnimationId = currentGameAnimations.Right
+local straightAnimationId = currentGameAnimations.Straight
 
-local leftAnimationId = ANIMATION_IDS.Left
-local rightAnimationId = ANIMATION_IDS.Right
-local straightAnimationId = ANIMATION_IDS.Straight
-
-local BLOCKED_ANIMATION_ID = 10449761463
-local MAX_TARGET_RANGE = 3.5  -- STRICT 3.5 STUDS
+local MAX_TARGET_RANGE = 40
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
@@ -85,78 +82,85 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- RED CHAM OVERLAY SYSTEM (OUTSIDE PLAYER)
-local chamOverlays = {}
-local doubleClickLocked = nil
+-- ENEMY RED CHAM SYSTEM (tracks nearest player + double-click lock)
+local chammedPlayers = {}
+local forcedLockedPlayer = nil
 
-local function createChamOverlay(player)
+local function addRedChamToPlayer(player)
     if not player or not player.Character then return end
-    if chamOverlays[player] then return end
+    if chammedPlayers[player] then return end
     
-    chamOverlays[player] = {}
-    local char = player.Character
-    
-    for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part ~= char:FindFirstChild("HumanoidRootPart") and part.Parent then
-            local overlay = Instance.new("Part")
-            overlay.Name = "ChamOverlay"
-            overlay.Shape = Enum.PartType.Block
-            overlay.CanCollide = false
-            overlay.CanQuery = false
-            overlay.CanTouch = false
-            overlay.CFrame = part.CFrame
-            overlay.Size = part.Size + Vector3.new(0.1, 0.1, 0.1)  -- SLIGHTLY LARGER (OUTSIDE)
-            overlay.Color = Color3.fromRGB(255, 0, 0)
-            overlay.Transparency = 0.75
-            overlay.Material = Enum.Material.SmoothPlastic
-            overlay.TopSurface = Enum.SurfaceType.Smooth
-            overlay.BottomSurface = Enum.SurfaceType.Smooth
-            overlay.Parent = char
-            
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = part
-            weld.Part1 = overlay
-            weld.Parent = overlay
-            
-            table.insert(chamOverlays[player], overlay)
+    chammedPlayers[player] = {}
+    for _, part in pairs(player.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local originalColor = part.Color
+            chammedPlayers[player][part] = originalColor
+            TweenService:Create(part, TweenInfo.new(0.15), {Color = Color3.fromRGB(255, 0, 0)}):Play()
         end
     end
 end
 
-local function removeChamOverlay(player)
-    if not chamOverlays[player] then return end
+local function removeRedChamFromPlayer(player)
+    if not chammedPlayers[player] then return end
     
-    for _, overlay in pairs(chamOverlays[player]) do
-        if overlay and overlay.Parent then
-            pcall(function() overlay:Destroy() end)
+    for part, originalColor in pairs(chammedPlayers[player]) do
+        if part and part.Parent then
+            TweenService:Create(part, TweenInfo.new(0.3), {Color = originalColor}):Play()
         end
     end
-    
-    chamOverlays[player] = nil
+    chammedPlayers[player] = nil
 end
 
-local function findNearestTarget(maxRange)
-    maxRange = maxRange or MAX_TARGET_RANGE
-    local nearestTarget, nearestDistance = nil, math.huge
-    if not HumanoidRootPart then return nil end
-    local rootPosition = HumanoidRootPart.Position
-
+local function updateEnemyCham()
+    if forcedLockedPlayer then
+        removeRedChamFromPlayer(nil)
+        for player in pairs(chammedPlayers) do
+            if player ~= forcedLockedPlayer then
+                removeRedChamFromPlayer(player)
+            end
+        end
+        addRedChamToPlayer(forcedLockedPlayer)
+        return
+    end
+    
+    local nearestPlayer, nearestDistance = nil, math.huge
+    if not HumanoidRootPart then return end
+    
     for _, player in pairs(PlayersService:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
             local targetHumanoid = player.Character:FindFirstChild("Humanoid")
             if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-                local distance = (targetRoot.Position - rootPosition).Magnitude
-                if distance < nearestDistance and distance <= maxRange then
-                    nearestTarget = player.Character
+                local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
+                if distance < nearestDistance and distance <= MAX_TARGET_RANGE then
+                    nearestPlayer = player
                     nearestDistance = distance
                 end
             end
         end
     end
-
-    return nearestTarget, nearestDistance
+    
+    for player in pairs(chammedPlayers) do
+        if player ~= nearestPlayer then
+            removeRedChamFromPlayer(player)
+        end
+    end
+    
+    if nearestPlayer then
+        addRedChamToPlayer(nearestPlayer)
+    end
 end
+
+RunService.Heartbeat:Connect(function()
+    updateEnemyCham()
+end)
+
+PlayersService.PlayerRemoving:Connect(function(player)
+    removeRedChamFromPlayer(player)
+    if forcedLockedPlayer == player then
+        forcedLockedPlayer = nil
+    end
+end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -211,9 +215,9 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v2.1", "Loaded successfully!")
+notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
+--// SNIPPET 2 - DASH LOGIC + ANIMATION BLOCKING
 
--- ANIMATIONS & TARGETING
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
     local foundHumanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -245,12 +249,11 @@ local function playSideAnimation(isLeftDirection)
         local success, loadedAnimation = pcall(function()
             return animator:LoadAnimation(animationInstance)
         end)
-        
         if success and loadedAnimation then
             sideAnimationTrack = loadedAnimation
-            pcall(function() loadedAnimation.Priority = Enum.AnimationPriority.Action end)
+            loadedAnimation.Priority = Enum.AnimationPriority.Action
             pcall(function() loadedAnimation.Looped = false end)
-            pcall(function() loadedAnimation:Play() end)
+            loadedAnimation:Play()
         end
 
         delay(0.7, function()
@@ -264,11 +267,50 @@ local function playSideAnimation(isLeftDirection)
     end
 end
 
+local function findNearestTarget(maxRange)
+    maxRange = maxRange or MAX_TARGET_RANGE
+    local nearestTarget, nearestDistance = nil, math.huge
+    if not HumanoidRootPart then return nil end
+    local rootPosition = HumanoidRootPart.Position
+
+    for _, player in pairs(PlayersService:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+            local playerHumanoid = player.Character:FindFirstChild("Humanoid")
+            if playerHumanoid and playerHumanoid.Health > 0 then
+                local distance = (player.Character.HumanoidRootPart.Position - rootPosition).Magnitude
+                if distance < nearestDistance and distance <= maxRange then
+                    nearestTarget = player.Character
+                    nearestDistance = distance
+                end
+            end
+        end
+    end
+
+    for _, descendant in pairs(WorkspaceService:GetDescendants()) do
+        if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") and descendant:FindFirstChild("HumanoidRootPart") and not PlayersService:GetPlayerFromCharacter(descendant) then
+            local npcHumanoid = descendant:FindFirstChild("Humanoid")
+            if npcHumanoid and npcHumanoid.Health > 0 then
+                local distance = (descendant.HumanoidRootPart.Position - rootPosition).Magnitude
+                if distance < nearestDistance and distance <= maxRange then
+                    nearestTarget = descendant
+                    nearestDistance = distance
+                end
+            end
+        end
+    end
+
+    return nearestTarget, nearestDistance
+end
+
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
     local baseMax = 0.10
     return baseMin + (baseMax - baseMin) * clampedValue
+end
+
+local function calculateDashAngle(_degreesSliderValue)
+    return 120
 end
 
 local function calculateDashDistance(_gapSliderValue)
@@ -277,73 +319,66 @@ end
 
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
-
 PlayersService.PlayerRemoving:Connect(function(removedPlayer)
     if lockedTargetPlayer == removedPlayer then
         lockedTargetPlayer = nil
     end
-    if doubleClickLocked and PlayersService:GetPlayerFromCharacter(doubleClickLocked) == removedPlayer then
-        doubleClickLocked = nil
-    end
 end)
 
 local function getCurrentTarget()
-    -- IF DOUBLE-CLICK LOCKED, USE THAT (WITH RANGE CHECK)
-    if doubleClickLocked and doubleClickLocked.Parent then
-        local targetRoot = doubleClickLocked:FindFirstChild("HumanoidRootPart")
-        local targetHumanoid = doubleClickLocked:FindFirstChild("Humanoid")
-        
-        if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
-            local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
-            if distance <= MAX_TARGET_RANGE then
-                return doubleClickLocked
-            else
-                notify("Out of Range", "Locked target is " .. string.format("%.1f", distance) .. " studs away (max: 3.5)!")
-                return nil
-            end
-        else
-            doubleClickLocked = nil
+    if forcedLockedPlayer and forcedLockedPlayer.Character and forcedLockedPlayer.Character.Parent then
+        local targetHumanoid = forcedLockedPlayer.Character:FindFirstChild("Humanoid")
+        if targetHumanoid and targetHumanoid.Health > 0 then
+            return forcedLockedPlayer.Character
         end
+        forcedLockedPlayer = nil
     end
     
-    -- AUTO-TARGET CLOSEST PLAYER
+    if lockedTargetPlayer then
+        if lockedTargetPlayer.Character and lockedTargetPlayer.Character.Parent then
+            local targetCharacter = lockedTargetPlayer.Character
+            local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+            local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+            if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
+                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude > MAX_TARGET_RANGE then
+                    return nil
+                else
+                    return targetCharacter
+                end
+            end
+            lockedTargetPlayer = nil
+        else
+            lockedTargetPlayer = nil
+        end
+    end
     return findNearestTarget(MAX_TARGET_RANGE)
 end
 
 local function aimCharacterAtTarget(targetPosition, lerpFactor)
     lerpFactor = lerpFactor or 0.7
     pcall(function()
-        if not HumanoidRootPart or not HumanoidRootPart.Parent then return end
         local characterPosition = HumanoidRootPart.Position
         local characterLookVector = HumanoidRootPart.CFrame.LookVector
         local directionToTarget = targetPosition - characterPosition
         local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-        
         if horizontalDirection.Magnitude < 0.001 then
             horizontalDirection = Vector3.new(1, 0, 0)
         end
-        
         local targetDirection = horizontalDirection.Unit
         local finalLookVector = Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z)
-        
         if finalLookVector.Magnitude < 0.001 then
             finalLookVector = Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z + 0.0001)
         end
-        
         local lerpedDirection = characterLookVector:Lerp(finalLookVector.Unit, lerpFactor)
-        
         if lerpedDirection.Magnitude < 0.001 then
-            lerpedDirection = Vector3.new(1, characterLookVector.Y, 0)
+            lerpedDirection = Vector3.new(finalLookVector.Unit.X, characterLookVector.Y, finalLookVector.Unit.Z)
         end
-        
-        local newCFrame = CFrame.new(characterPosition, characterPosition + lerpedDirection.Unit)
-        if newCFrame and newCFrame:IsA("CFrame") then
-            HumanoidRootPart.CFrame = newCFrame
-        end
+        HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + lerpedDirection.Unit)
     end)
 end
 
-local function isBlockedAnimationPlaying()
+-- CHECK IF ANY ANIMATION IS PLAYING (blocks dash if anim playing)
+local function isAnyAnimationPlaying()
     if not Character or not Character.Parent then return false end
     local humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false end
@@ -351,32 +386,14 @@ local function isBlockedAnimationPlaying()
     if not animator then return false end
     
     for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-        if track and track.IsPlaying and track.Animation then
-            local animId = track.Animation.AnimationId
-            if animId and string.find(animId, tostring(BLOCKED_ANIMATION_ID)) then
-                return true
-            end
+        if track and track.IsPlaying then
+            return true
         end
     end
     return false
 end
 
--- DASH MOVEMENT (FIXED CFRAME)
-local m1ToggleEnabled = false
-local dashToggleEnabled = false
-
-local function communicateWithServer(communicationData)
-    pcall(function()
-        local playerCharacter = LocalPlayer.Character
-        if playerCharacter and playerCharacter:FindFirstChild("Communicate") then
-            playerCharacter.Communicate:FireServer(unpack(communicationData))
-        end
-    end)
-end
-
 local function performDashMovement(targetRootPart, dashSpeed)
-    if not targetRootPart or not HumanoidRootPart then return end
-    
     dashSpeed = dashSpeed or DASH_SPEED
     local attachment = Instance.new("Attachment")
     attachment.Name = "DashAttach"
@@ -390,27 +407,31 @@ local function performDashMovement(targetRootPart, dashSpeed)
     linearVelocity.Parent = HumanoidRootPart
 
     straightAnimationTrack = nil
+    local straightAnimationInstance = nil
 
     if straightAnimationId then
         local characterHumanoid, characterAnimator = getHumanoidAndAnimator()
         if characterHumanoid and characterAnimator then
-            local straightAnimationInstance = Instance.new("Animation")
+            straightAnimationInstance = Instance.new("Animation")
             straightAnimationInstance.Name = "StraightDashAnim"
             straightAnimationInstance.AnimationId = "rbxassetid://" .. tostring(straightAnimationId)
             local success, loadedAnim = pcall(function()
                 return characterAnimator:LoadAnimation(straightAnimationInstance)
             end)
             if success and loadedAnim then
-                pcall(function() loadedAnim.Priority = Enum.AnimationPriority.Movement end)
+                loadedAnim.Priority = Enum.AnimationPriority.Movement
                 pcall(function() loadedAnim.Looped = false end)
                 pcall(function() loadedAnim:Play() end)
                 straightAnimationTrack = loadedAnim
+            else
+                pcall(function() straightAnimationInstance:Destroy() end)
             end
         end
     end
 
     pcall(function()
-        if dashSound then dashSound:Stop() dashSound:Play() end
+        dashSound:Stop()
+        dashSound:Play()
     end)
 
     local isActive = true
@@ -421,35 +442,33 @@ local function performDashMovement(targetRootPart, dashSpeed)
             local targetPosition = targetRootPart.Position
             local directionToTarget = targetPosition - HumanoidRootPart.Position
             local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-            
             if horizontalDirection.Magnitude > TARGET_REACH_THRESHOLD then
                 linearVelocity.VectorVelocity = horizontalDirection.Unit * dashSpeed
                 pcall(function()
                     if horizontalDirection.Magnitude > 0.001 then
-                        local newPos = HumanoidRootPart.Position
-                        local newLookat = newPos + horizontalDirection.Unit
-                        local cf = CFrame.new(newPos, newLookat)
-                        if cf then HumanoidRootPart.CFrame = cf end
+                        HumanoidRootPart.CFrame = CFrame.new(
+                            HumanoidRootPart.Position,
+                            HumanoidRootPart.Position + horizontalDirection.Unit
+                        )
                     end
                 end)
-                pcall(function() aimCharacterAtTarget(targetPosition, 0.56) end)
+                pcall(function()
+                    aimCharacterAtTarget(targetPosition, 0.56)
+                end)
             else
                 isActive = false
                 heartbeatConnection:Disconnect()
-                pcall(function() if linearVelocity and linearVelocity.Parent then linearVelocity:Destroy() end end)
-                pcall(function() if attachment and attachment.Parent then attachment:Destroy() end end)
+                pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
             end
         else
             isActive = false
-            if heartbeatConnection then heartbeatConnection:Disconnect() end
-            pcall(function() if linearVelocity and linearVelocity.Parent then linearVelocity:Destroy() end end)
-            pcall(function() if attachment and attachment.Parent then attachment:Destroy() end end)
+            heartbeatConnection:Disconnect()
+            pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
         end
     end)
 end
 
 local function smoothlyAimAtTarget(targetRootPart, duration)
-    if not targetRootPart then return end
     duration = duration or CAMERA_FOLLOW_DELAY
     if targetRootPart and targetRootPart.Parent then
         local startTime = tick()
@@ -466,22 +485,16 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
                 end)
                 local predictedPosition = targetPosition + Vector3.new(targetVelocity.X, 0, targetVelocity.Z) * VELOCITY_PREDICTION_FACTOR
                 pcall(function()
-                    if HumanoidRootPart and HumanoidRootPart.Parent then
-                        local characterPosition = HumanoidRootPart.Position
-                        local characterLookVector = HumanoidRootPart.CFrame.LookVector
-                        local directionToTarget = predictedPosition - characterPosition
-                        local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-                        
-                        if horizontalDirection.Magnitude < 0.001 then
-                            horizontalDirection = Vector3.new(1, 0, 0)
-                        end
-                        
-                        local targetDirection = horizontalDirection.Unit
-                        local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
-                        
-                        local newCFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
-                        if newCFrame then HumanoidRootPart.CFrame = newCFrame end
+                    local characterPosition = HumanoidRootPart.Position
+                    local characterLookVector = HumanoidRootPart.CFrame.LookVector
+                    local directionToTarget = predictedPosition - characterPosition
+                    local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
+                    if horizontalDirection.Magnitude < 0.001 then
+                        horizontalDirection = Vector3.new(1, 0, 0)
                     end
+                    local targetDirection = horizontalDirection.Unit
+                    local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
+                    HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                 end)
                 if progress >= 1 then aimTweenConnection:Disconnect() end
             else
@@ -491,28 +504,32 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
     end
 end
 
+local m1ToggleEnabled = false
+local dashToggleEnabled = false
+
+local function communicateWithServer(communicationData)
+    pcall(function()
+        local playerCharacter = LocalPlayer.Character
+        if playerCharacter and playerCharacter:FindFirstChild("Communicate") then
+            playerCharacter.Communicate:FireServer(unpack(communicationData))
+        end
+    end)
+end
+
 local function performCircularDash(targetCharacter)
-    if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
-    if isDashing or isCharacterDisabled() then return end
+    if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
     
-    if isBlockedAnimationPlaying() then
+    -- BLOCKED IF ANIMATION PLAYING
+    if isAnyAnimationPlaying() then
         notify("Blocked", "Cannot dash while animating")
         return
     end
     
     local currentTime = tick()
     local timeSinceLastDash = currentTime - lastButtonPressTime
-    
     if timeSinceLastDash < _G.dashCooldown then
-        return
-    end
-    
-    -- STRICT 3.5 STUD RANGE CHECK BEFORE DASH
-    local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return end
-    local distanceToTarget = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
-    if distanceToTarget > MAX_TARGET_RANGE then
-        notify("Out of Range", "Target is " .. string.format("%.1f", distanceToTarget) .. " studs away (max: 3.5)!")
+        local remainingMs = math.ceil((_G.dashCooldown - timeSinceLastDash) * 1000)
+        notify("Cooldown", "Wait " .. remainingMs .. "ms")
         return
     end
     
@@ -534,11 +551,12 @@ local function performCircularDash(targetCharacter)
     end
 
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
-    local dashAngle = 120
+    local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
+    local targetRoot = targetCharacter.HumanoidRootPart
 
-    if MIN_TARGET_DISTANCE <= distanceToTarget then
+    if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
     end
 
@@ -547,7 +565,6 @@ local function performCircularDash(targetCharacter)
         local characterPosition = HumanoidRootPart.Position
         local characterRightVector = HumanoidRootPart.CFrame.RightVector
         local directionToTarget = targetRoot.Position - HumanoidRootPart.Position
-        
         if directionToTarget.Magnitude < 0.001 then
             directionToTarget = HumanoidRootPart.CFrame.LookVector
         end
@@ -594,23 +611,6 @@ local function performCircularDash(targetCharacter)
         end
 
         movementConnection = RunService.Heartbeat:Connect(function()
-            if not Character or not HumanoidRootPart then 
-                movementConnection:Disconnect()
-                return 
-            end
-            
-            -- CONTINUOUS RANGE CHECK
-            if targetRoot and targetRoot.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
-                local currentDistance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
-                if currentDistance > MAX_TARGET_RANGE then
-                    movementConnection:Disconnect()
-                    notify("Out of Range", "Target left range during dash!")
-                    isDashing = false
-                    restoreAutoRotate()
-                    return
-                end
-            end
-            
             local currentTime = tick()
             local progress = math.clamp((currentTime - startTime) / dashDuration, 0, 1)
             local easedProgress = easeInOutCubic(progress)
@@ -631,8 +631,10 @@ local function performCircularDash(targetCharacter)
             local finalCharacterAngle = characterAngle + getAngleDifference(angleToTargetPosition, characterAngle) * DIRECTION_LERP_FACTOR
 
             pcall(function()
-                local cf = CFrame.new(newPosition, newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle)))
-                if cf then HumanoidRootPart.CFrame = cf end
+                HumanoidRootPart.CFrame = CFrame.new(
+                    newPosition,
+                    newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle))
+                )
             end)
 
             if not hasStartedAim and CIRCLE_COMPLETION_THRESHOLD <= easedProgress then
@@ -678,13 +680,11 @@ InputService.InputBegan:Connect(function(inp, gp)
         local target = getCurrentTarget()
         if target then
             performCircularDash(target)
-        else
-            notify("No Target", "No enemies in range! (Max: 3.5 studs)")
         end
     end
 end)
+--// SNIPPET 3 - GUI + ALL DRAGGABLE TABS
 
--- GUI SETUP
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
 gui.ResetOnSpawn = false
@@ -708,31 +708,17 @@ loadSound.SoundId = "rbxassetid://87437544236708"
 loadSound.Volume = 1
 loadSound.Parent = gui
 
--- COOLDOWN LABEL - BOTTOM LEFT
-local cooldownLabel = Instance.new("TextLabel")
-cooldownLabel.Name = "CooldownLabel"
-cooldownLabel.Size = UDim2.new(0, 100, 0, 30)
-cooldownLabel.Position = UDim2.new(0, 10, 1, -50)
-cooldownLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-cooldownLabel.BackgroundTransparency = 0.3
-cooldownLabel.BorderSizePixel = 0
-cooldownLabel.Text = "Ready"
-cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-cooldownLabel.TextSize = 11
-cooldownLabel.Font = Enum.Font.GothamBold
-cooldownLabel.Parent = gui
-Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
-
 -- Main frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 380, 0, 140)
 mainFrame.Position = UDim2.new(0.5, -190, 0.12, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-mainFrame.BackgroundTransparency = 0
+mainFrame.BackgroundTransparency = 1
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
 mainFrame.Parent = gui
+mainFrame.Draggable = true
 
 local mainCorner = Instance.new("UICorner", mainFrame)
 mainCorner.CornerRadius = UDim.new(0, 20)
@@ -751,7 +737,7 @@ borderFrame.Name = "BorderFrame"
 borderFrame.Size = UDim2.new(1, 8, 1, 8)
 borderFrame.Position = UDim2.new(0, -4, 0, -4)
 borderFrame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-borderFrame.BackgroundTransparency = 0
+borderFrame.BackgroundTransparency = 1
 borderFrame.BorderSizePixel = 0
 borderFrame.ZIndex = 0
 borderFrame.Parent = mainFrame
@@ -790,7 +776,7 @@ versionLabel.Size = UDim2.new(0, 55, 0, 24)
 versionLabel.Position = UDim2.new(0, 215, 0, 13)
 versionLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 versionLabel.BorderSizePixel = 0
-versionLabel.Text = "V2.1"
+versionLabel.Text = "V2.0"
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextSize = 13
 versionLabel.Font = Enum.Font.GothamBold
@@ -820,7 +806,6 @@ closeBtn.TextSize = 19
 closeBtn.BorderSizePixel = 0
 closeBtn.Style = Enum.ButtonStyle.Custom
 closeBtn.Parent = mainFrame
-closeBtn.ZIndex = 100
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
 local minimizeBtn = Instance.new("TextButton")
@@ -834,7 +819,6 @@ minimizeBtn.TextSize = 22
 minimizeBtn.BorderSizePixel = 0
 minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
-minimizeBtn.ZIndex = 100
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
 local settingsBtn = Instance.new("TextButton")
@@ -847,7 +831,6 @@ settingsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 settingsBtn.TextSize = 19
 settingsBtn.BorderSizePixel = 0
 settingsBtn.Style = Enum.ButtonStyle.Custom
-settingsBtn.ZIndex = 100
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
@@ -861,7 +844,6 @@ keybindsInfoBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 keybindsInfoBtn.TextSize = 19
 keybindsInfoBtn.BorderSizePixel = 0
 keybindsInfoBtn.Style = Enum.ButtonStyle.Custom
-keybindsInfoBtn.ZIndex = 100
 keybindsInfoBtn.Parent = mainFrame
 Instance.new("UICorner", keybindsInfoBtn).CornerRadius = UDim.new(1, 0)
 
@@ -876,7 +858,6 @@ discordBtn.Font = Enum.Font.GothamBold
 discordBtn.TextSize = 14
 discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 discordBtn.Style = Enum.ButtonStyle.Custom
-discordBtn.ZIndex = 100
 discordBtn.Parent = mainFrame
 Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 10)
 local discordGradient = Instance.new("UIGradient", discordBtn)
@@ -897,7 +878,6 @@ ytBtn.Font = Enum.Font.GothamBold
 ytBtn.TextSize = 14
 ytBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ytBtn.Style = Enum.ButtonStyle.Custom
-ytBtn.ZIndex = 100
 ytBtn.Parent = mainFrame
 Instance.new("UICorner", ytBtn).CornerRadius = UDim.new(0, 10)
 local ytGradient = Instance.new("UIGradient", ytBtn)
@@ -907,17 +887,17 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay WITH FULL CONTENT
+-- Settings overlay (DRAGGABLE)
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
-settingsOverlay.Size = UDim2.new(0, 320, 0, 400)
+settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
 settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
 settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-settingsOverlay.BackgroundTransparency = 0
+settingsOverlay.BackgroundTransparency = 1
 settingsOverlay.BorderSizePixel = 0
 settingsOverlay.Visible = false
 settingsOverlay.Parent = gui
-settingsOverlay.ZIndex = 50
+settingsOverlay.Draggable = true
 Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
 overlayGradient.Color = ColorSequence.new({
@@ -948,14 +928,53 @@ settingsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 settingsCloseBtn.TextSize = 19
 settingsCloseBtn.BorderSizePixel = 0
 settingsCloseBtn.Style = Enum.ButtonStyle.Custom
-settingsCloseBtn.ZIndex = 100
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
 
--- BUTTON SIZE SECTION
+local keybindFrame = Instance.new("Frame")
+keybindFrame.Size = UDim2.new(1, -32, 0, 110)
+keybindFrame.Position = UDim2.new(0, 16, 0, 60)
+keybindFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keybindFrame.BorderSizePixel = 0
+keybindFrame.Parent = settingsOverlay
+Instance.new("UICorner", keybindFrame).CornerRadius = UDim.new(0, 14)
+
+local keyTitle = Instance.new("TextLabel")
+keyTitle.Size = UDim2.new(1, -20, 0, 30)
+keyTitle.Position = UDim2.new(0, 10, 0, 8)
+keyTitle.BackgroundTransparency = 1
+keyTitle.Text = "Keybind Info"
+keyTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
+keyTitle.TextSize = 18
+keyTitle.Font = Enum.Font.GothamBold
+keyTitle.TextXAlignment = Enum.TextXAlignment.Left
+keyTitle.Parent = keybindFrame
+
+local keyInfo1 = Instance.new("TextLabel")
+keyInfo1.Size = UDim2.new(1, -20, 0, 24)
+keyInfo1.Position = UDim2.new(0, 10, 0, 40)
+keyInfo1.BackgroundTransparency = 1
+keyInfo1.Text = "PC Dash Key: E"
+keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo1.TextSize = 15
+keyInfo1.Font = Enum.Font.Gotham
+keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo1.Parent = keybindFrame
+
+local keyInfo2 = Instance.new("TextLabel")
+keyInfo2.Size = UDim2.new(1, -20, 0, 24)
+keyInfo2.Position = UDim2.new(0, 10, 0, 66)
+keyInfo2.BackgroundTransparency = 1
+keyInfo2.Text = "Mobile Button :)"
+keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo2.TextSize = 15
+keyInfo2.Font = Enum.Font.Gotham
+keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo2.Parent = keybindFrame
+
 local sizeLabel = Instance.new("TextLabel")
 sizeLabel.Size = UDim2.new(1, -32, 0, 22)
-sizeLabel.Position = UDim2.new(0, 16, 0, 55)
+sizeLabel.Position = UDim2.new(0, 16, 0, 180)
 sizeLabel.BackgroundTransparency = 1
 sizeLabel.Text = "Button Size (50-150):"
 sizeLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
@@ -965,8 +984,8 @@ sizeLabel.TextXAlignment = Enum.TextXAlignment.Left
 sizeLabel.Parent = settingsOverlay
 
 local sizeTextbox = Instance.new("TextBox")
-sizeTextbox.Size = UDim2.new(1, -32, 0, 35)
-sizeTextbox.Position = UDim2.new(0, 16, 0, 80)
+sizeTextbox.Size = UDim2.new(0, 80, 0, 26)
+sizeTextbox.Position = UDim2.new(0, 190, 0, 177)
 sizeTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 sizeTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
 sizeTextbox.PlaceholderText = "90"
@@ -978,91 +997,17 @@ sizeTextbox.Font = Enum.Font.Gotham
 sizeTextbox.Parent = settingsOverlay
 Instance.new("UICorner", sizeTextbox).CornerRadius = UDim.new(0, 8)
 
--- COOLDOWN SECTION
-local cooldownLabel2 = Instance.new("TextLabel")
-cooldownLabel2.Size = UDim2.new(1, -32, 0, 22)
-cooldownLabel2.Position = UDim2.new(0, 16, 0, 130)
-cooldownLabel2.BackgroundTransparency = 1
-cooldownLabel2.Text = "Dash Cooldown (1-5s):"
-cooldownLabel2.TextColor3 = Color3.fromRGB(230, 230, 230)
-cooldownLabel2.TextSize = 14
-cooldownLabel2.Font = Enum.Font.GothamBold
-cooldownLabel2.TextXAlignment = Enum.TextXAlignment.Left
-cooldownLabel2.Parent = settingsOverlay
-
-local cooldownTextbox = Instance.new("TextBox")
-cooldownTextbox.Size = UDim2.new(1, -32, 0, 35)
-cooldownTextbox.Position = UDim2.new(0, 16, 0, 155)
-cooldownTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-cooldownTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-cooldownTextbox.PlaceholderText = "2.0"
-cooldownTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-cooldownTextbox.BorderSizePixel = 0
-cooldownTextbox.Text = tostring(_G.dashCooldown)
-cooldownTextbox.TextSize = 14
-cooldownTextbox.Font = Enum.Font.Gotham
-cooldownTextbox.Parent = settingsOverlay
-Instance.new("UICorner", cooldownTextbox).CornerRadius = UDim.new(0, 8)
-
--- DISTANCE SECTION
-local distanceLabel = Instance.new("TextLabel")
-distanceLabel.Size = UDim2.new(1, -32, 0, 22)
-distanceLabel.Position = UDim2.new(0, 16, 0, 205)
-distanceLabel.BackgroundTransparency = 1
-distanceLabel.Text = "Dash Distance Gap:"
-distanceLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-distanceLabel.TextSize = 14
-distanceLabel.Font = Enum.Font.GothamBold
-distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
-distanceLabel.Parent = settingsOverlay
-
-local distanceTextbox = Instance.new("TextBox")
-distanceTextbox.Size = UDim2.new(1, -32, 0, 35)
-distanceTextbox.Position = UDim2.new(0, 16, 0, 230)
-distanceTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-distanceTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-distanceTextbox.PlaceholderText = "0.5"
-distanceTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-distanceTextbox.BorderSizePixel = 0
-distanceTextbox.Text = tostring(_G.dashDistance)
-distanceTextbox.TextSize = 14
-distanceTextbox.Font = Enum.Font.Gotham
-distanceTextbox.Parent = settingsOverlay
-Instance.new("UICorner", distanceTextbox).CornerRadius = UDim.new(0, 8)
-
--- INFO BOX
-local infoBox = Instance.new("Frame")
-infoBox.Size = UDim2.new(1, -32, 0, 85)
-infoBox.Position = UDim2.new(0, 16, 0, 280)
-infoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-infoBox.BorderSizePixel = 0
-infoBox.Parent = settingsOverlay
-Instance.new("UICorner", infoBox).CornerRadius = UDim.new(0, 8)
-
-local infoText = Instance.new("TextLabel")
-infoText.Size = UDim2.new(1, -12, 1, -12)
-infoText.Position = UDim2.new(0, 6, 0, 6)
-infoText.BackgroundTransparency = 1
-infoText.Text = "• Size: Button pixel size (px)\n• Cooldown: Wait time between dashes\n• Distance: Gap between you & target\n• Max Range: 3.5 studs (strict)"
-infoText.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText.TextSize = 12
-infoText.Font = Enum.Font.Gotham
-infoText.TextXAlignment = Enum.TextXAlignment.Left
-infoText.TextYAlignment = Enum.TextYAlignment.Top
-infoText.TextWrapped = true
-infoText.Parent = infoBox
-
--- Keybinds overlay WITH FULL CONTENT
+-- Keybinds overlay (DRAGGABLE + VISIBLE FIX)
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
-keybindsOverlay.Size = UDim2.new(0, 340, 0, 420)
-keybindsOverlay.Position = UDim2.new(0.5, -170, 0.3, 0)
+keybindsOverlay.Size = UDim2.new(0, 220, 0, 220)
+keybindsOverlay.Position = UDim2.new(0.5, -110, 0.3, 0)
 keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 keybindsOverlay.BackgroundTransparency = 0
 keybindsOverlay.BorderSizePixel = 0
 keybindsOverlay.Visible = false
 keybindsOverlay.Parent = gui
-keybindsOverlay.ZIndex = 50
+keybindsOverlay.Draggable = true
 Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 19)
 local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
 keybindsGradient.Color = ColorSequence.new({
@@ -1076,7 +1021,7 @@ local keybindsTitle = Instance.new("TextLabel")
 keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
 keybindsTitle.Position = UDim2.new(0, 16, 0, 5)
 keybindsTitle.BackgroundTransparency = 1
-keybindsTitle.Text = "Keybinds & Info"
+keybindsTitle.Text = "Keybinds"
 keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 keybindsTitle.TextSize = 21
 keybindsTitle.Font = Enum.Font.GothamBold
@@ -1093,101 +1038,55 @@ keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 keybindsCloseBtn.TextSize = 19
 keybindsCloseBtn.BorderSizePixel = 0
 keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
-keybindsCloseBtn.ZIndex = 100
 keybindsCloseBtn.Parent = keybindsOverlay
 Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
 
--- DASH KEYBIND SECTION
-local dashKeyLabel = Instance.new("TextLabel")
-dashKeyLabel.Size = UDim2.new(1, -32, 0, 22)
-dashKeyLabel.Position = UDim2.new(0, 16, 0, 55)
-dashKeyLabel.BackgroundTransparency = 1
-dashKeyLabel.Text = "Dash Keybind (PC):"
-dashKeyLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-dashKeyLabel.TextSize = 14
-dashKeyLabel.Font = Enum.Font.GothamBold
-dashKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
-dashKeyLabel.Parent = keybindsOverlay
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Size = UDim2.new(1, -32, 0, 25)
+keybindLabel.Position = UDim2.new(0, 16, 0, 55)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Dash Keybind:"
+keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+keybindLabel.TextSize = 15
+keybindLabel.Font = Enum.Font.GothamBold
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.Parent = keybindsOverlay
 
-local dashKeyTextbox = Instance.new("TextBox")
-dashKeyTextbox.Size = UDim2.new(1, -32, 0, 35)
-dashKeyTextbox.Position = UDim2.new(0, 16, 0, 80)
-dashKeyTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-dashKeyTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-dashKeyTextbox.PlaceholderText = "E, Q, R, X, C, V, F, G, Z, T, Y, U"
-dashKeyTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-dashKeyTextbox.BorderSizePixel = 0
-dashKeyTextbox.Text = "E"
-dashKeyTextbox.TextSize = 14
-dashKeyTextbox.Font = Enum.Font.Gotham
-dashKeyTextbox.Parent = keybindsOverlay
-Instance.new("UICorner", dashKeyTextbox).CornerRadius = UDim.new(0, 8)
+local keybindTextbox = Instance.new("TextBox")
+keybindTextbox.Size = UDim2.new(1, -32, 0, 30)
+keybindTextbox.Position = UDim2.new(0, 16, 0, 80)
+keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindTextbox.PlaceholderText = "E, Q, R..."
+keybindTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+keybindTextbox.BorderSizePixel = 0
+keybindTextbox.Text = "E"
+keybindTextbox.TextSize = 14
+keybindTextbox.Font = Enum.Font.Gotham
+keybindTextbox.Parent = keybindsOverlay
+Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 8)
 
--- TARGET LOCKING SECTION
-local lockingLabel = Instance.new("TextLabel")
-lockingLabel.Size = UDim2.new(1, -32, 0, 22)
-lockingLabel.Position = UDim2.new(0, 16, 0, 130)
-lockingLabel.BackgroundTransparency = 1
-lockingLabel.Text = "Target Locking:"
-lockingLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-lockingLabel.TextSize = 14
-lockingLabel.Font = Enum.Font.GothamBold
-lockingLabel.TextXAlignment = Enum.TextXAlignment.Left
-lockingLabel.Parent = keybindsOverlay
+local keyInfo1KB = Instance.new("TextLabel")
+keyInfo1KB.Size = UDim2.new(1, -32, 0, 24)
+keyInfo1KB.Position = UDim2.new(0, 16, 0, 120)
+keyInfo1KB.BackgroundTransparency = 1
+keyInfo1KB.Text = "Current key: E"
+keyInfo1KB.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo1KB.TextSize = 15
+keyInfo1KB.Font = Enum.Font.Gotham
+keyInfo1KB.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo1KB.Parent = keybindsOverlay
 
-local lockingInfoBox = Instance.new("Frame")
-lockingInfoBox.Size = UDim2.new(1, -32, 0, 110)
-lockingInfoBox.Position = UDim2.new(0, 16, 0, 155)
-lockingInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-lockingInfoBox.BorderSizePixel = 0
-lockingInfoBox.Parent = keybindsOverlay
-Instance.new("UICorner", lockingInfoBox).CornerRadius = UDim.new(0, 8)
-
-local lockingInfoText = Instance.new("TextLabel")
-lockingInfoText.Size = UDim2.new(1, -12, 1, -12)
-lockingInfoText.Position = UDim2.new(0, 6, 0, 6)
-lockingInfoText.BackgroundTransparency = 1
-lockingInfoText.Text = "• Auto-targets CLOSEST enemy\n• Max range: 3.5 studs STRICT\n• Double-click player for RED CHAM lock\n• Red overlay = 75% transparent\n• Out of range = notification\n• Can't dash if target out of range"
-lockingInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
-lockingInfoText.TextSize = 12
-lockingInfoText.Font = Enum.Font.Gotham
-lockingInfoText.TextXAlignment = Enum.TextXAlignment.Left
-lockingInfoText.TextYAlignment = Enum.TextYAlignment.Top
-lockingInfoText.TextWrapped = true
-lockingInfoText.Parent = lockingInfoBox
-
--- MOBILE SECTION
-local mobileLabel = Instance.new("TextLabel")
-mobileLabel.Size = UDim2.new(1, -32, 0, 22)
-mobileLabel.Position = UDim2.new(0, 16, 0, 280)
-mobileLabel.BackgroundTransparency = 1
-mobileLabel.Text = "Mobile:"
-mobileLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-mobileLabel.TextSize = 14
-mobileLabel.Font = Enum.Font.GothamBold
-mobileLabel.TextXAlignment = Enum.TextXAlignment.Left
-mobileLabel.Parent = keybindsOverlay
-
-local mobileInfoBox = Instance.new("Frame")
-mobileInfoBox.Size = UDim2.new(1, -32, 0, 80)
-mobileInfoBox.Position = UDim2.new(0, 16, 0, 305)
-mobileInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-mobileInfoBox.BorderSizePixel = 0
-mobileInfoBox.Parent = keybindsOverlay
-Instance.new("UICorner", mobileInfoBox).CornerRadius = UDim.new(0, 8)
-
-local mobileInfoText = Instance.new("TextLabel")
-mobileInfoText.Size = UDim2.new(1, -12, 1, -12)
-mobileInfoText.Position = UDim2.new(0, 6, 0, 6)
-mobileInfoText.BackgroundTransparency = 1
-mobileInfoText.Text = "• Red dash button (right side)\n• Tap to dash at nearest target\n• Right-drag to reposition\n• Same 3.5 stud range limit"
-mobileInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
-mobileInfoText.TextSize = 12
-mobileInfoText.Font = Enum.Font.Gotham
-mobileInfoText.TextXAlignment = Enum.TextXAlignment.Left
-mobileInfoText.TextYAlignment = Enum.TextYAlignment.Top
-mobileInfoText.TextWrapped = true
-mobileInfoText.Parent = mobileInfoBox
+local keyInfo2KB = Instance.new("TextLabel")
+keyInfo2KB.Size = UDim2.new(1, -32, 0, 24)
+keyInfo2KB.Position = UDim2.new(0, 16, 0, 146)
+keyInfo2KB.BackgroundTransparency = 1
+keyInfo2KB.Text = "Mobile: red dash button"
+keyInfo2KB.TextColor3 = Color3.fromRGB(205, 205, 205)
+keyInfo2KB.TextSize = 15
+keyInfo2KB.Font = Enum.Font.Gotham
+keyInfo2KB.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo2KB.Parent = keybindsOverlay
 
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
@@ -1201,8 +1100,8 @@ openButton.Font = Enum.Font.GothamBold
 openButton.BorderSizePixel = 0
 openButton.Visible = false
 openButton.Style = Enum.ButtonStyle.Custom
-openButton.ZIndex = 100
 openButton.Parent = gui
+openButton.Draggable = true
 Instance.new("UICorner", openButton).CornerRadius = UDim.new(0, 10)
 
 local dashButtonLocked = false
@@ -1218,10 +1117,11 @@ lockButton.Font = Enum.Font.GothamBold
 lockButton.BorderSizePixel = 0
 lockButton.Visible = false
 lockButton.Style = Enum.ButtonStyle.Custom
-lockButton.ZIndex = 100
 lockButton.Parent = gui
+lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
+-- REFRESH BUTTON (clears forced target lock)
 local refreshBtn = Instance.new("TextButton")
 refreshBtn.Name = "RefreshButton"
 refreshBtn.Size = UDim2.new(0, 90, 0, 34)
@@ -1234,8 +1134,8 @@ refreshBtn.Font = Enum.Font.GothamBold
 refreshBtn.BorderSizePixel = 0
 refreshBtn.Visible = false
 refreshBtn.Style = Enum.ButtonStyle.Custom
-refreshBtn.ZIndex = 100
 refreshBtn.Parent = gui
+refreshBtn.Draggable = true
 Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 10)
 
 local dashBtn = Instance.new("Frame")
@@ -1246,7 +1146,7 @@ dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 dashBtn.BorderSizePixel = 0
 dashBtn.Parent = gui
 dashBtn.Active = true
-dashBtn.ZIndex = 100
+dashBtn.Draggable = true
 Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
 
 local dashGrad = Instance.new("UIGradient", dashBtn)
@@ -1263,12 +1163,7 @@ dashIcon.Size = UDim2.new(0, _G.dashButtonSize - 15, 0, _G.dashButtonSize - 15)
 dashIcon.Position = UDim2.new(0.5, -(_G.dashButtonSize - 15) / 2, 0.5, -(_G.dashButtonSize - 15) / 2)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
-dashIcon.ZIndex = 101
-
--- BUTTON LOGIC
-local lastClickTime = {}
-local DOUBLE_CLICK_THRESHOLD = 0.25
-local espButtons = {}
+--// SNIPPET 4 - APPLY FUNCTIONS + BUTTON LOGIC + DOUBLE-CLICK TARGET
 
 local function notifyGui(text)
     pcall(function()
@@ -1287,35 +1182,11 @@ local function applyButtonSize(newSize)
         return false
     end
     _G.dashButtonSize = sizeNum
-    if dashBtn and dashBtn.Parent then
-        dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
-        dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
-        dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
-        dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
-    end
+    dashBtn.Size = UDim2.new(0, sizeNum, 0, sizeNum)
+    dashIcon.Size = UDim2.new(0, sizeNum - 15, 0, sizeNum - 15)
+    dashIcon.Position = UDim2.new(0.5, -(sizeNum - 15) / 2, 0.5, -(sizeNum - 15) / 2)
+    dashBtn.Position = UDim2.new(1, -(sizeNum + 15), 0.5, -sizeNum / 2)
     notifyGui("Button size set to " .. sizeNum)
-    return true
-end
-
-local function applyCooldown(newCooldown)
-    local cooldownNum = tonumber(newCooldown)
-    if not cooldownNum or cooldownNum < 1 or cooldownNum > 5 then
-        notifyGui("Cooldown must be 1-5 seconds")
-        return false
-    end
-    _G.dashCooldown = cooldownNum
-    notifyGui("Cooldown set to " .. cooldownNum .. "s")
-    return true
-end
-
-local function applyDistance(newDistance)
-    local distanceNum = tonumber(newDistance)
-    if not distanceNum or distanceNum < 0.1 or distanceNum > 20 then
-        notifyGui("Distance must be 0.1-20")
-        return false
-    end
-    _G.dashDistance = distanceNum
-    notifyGui("Dash distance set to " .. distanceNum)
     return true
 end
 
@@ -1330,6 +1201,7 @@ local function applyKeybind(keyName)
     local keycode = keyMap[upperKey]
     if keycode then
         _G.dashKeybind = keycode
+        keyInfo1KB.Text = "Current key: " .. upperKey
         notifyGui("Keybind set to " .. upperKey)
         return true
     else
@@ -1338,29 +1210,28 @@ local function applyKeybind(keyName)
     end
 end
 
+-- DOUBLE-CLICK TARGET LOCK SYSTEM
+local lastClickTime = {}
+local DOUBLE_CLICK_THRESHOLD = 0.3
+
 local function onPlayerDoubleClick(player)
     if not lastClickTime[player] then
         lastClickTime[player] = tick()
-        notifyGui("Click again to lock: " .. player.Name)
         return
     end
     
     local timeSinceLastClick = tick() - lastClickTime[player]
     if timeSinceLastClick < DOUBLE_CLICK_THRESHOLD then
-        if doubleClickLocked == player.Character then
-            doubleClickLocked = nil
-            removeChamOverlay(player)
-            notifyGui("Unlocked: " .. player.Name)
-        else
-            doubleClickLocked = player.Character
-            createChamOverlay(player)
-            notifyGui("Locked: " .. player.Name .. " (Red cham active)")
-        end
+        forcedLockedPlayer = player
+        notifyGui("Target locked: " .. player.Name)
         lastClickTime[player] = nil
     else
         lastClickTime[player] = tick()
     end
 end
+
+-- Create player ESP buttons (invisible, clickable)
+local espButtons = {}
 
 local function createESPButtonForPlayer(player)
     if espButtons[player] then return end
@@ -1380,9 +1251,7 @@ local function createESPButtonForPlayer(player)
     
     local function updateESPButton()
         if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            if espBtn and espBtn.Parent then
-                espBtn:Destroy()
-            end
+            espBtn:Destroy()
             espButtons[player] = nil
             return
         end
@@ -1425,215 +1294,150 @@ PlayersService.PlayerAdded:Connect(function(player)
 end)
 
 PlayersService.PlayerRemoving:Connect(function(player)
-    if espButtons[player] and espButtons[player].button and espButtons[player].button.Parent then
+    if espButtons[player] then
         espButtons[player].button:Destroy()
+        espButtons[player] = nil
     end
-    espButtons[player] = nil
-    if doubleClickLocked == player.Character then
-        doubleClickLocked = nil
+    if forcedLockedPlayer == player then
+        forcedLockedPlayer = nil
     end
 end)
 
--- COOLDOWN LABEL UPDATE
-RunService.Heartbeat:Connect(function()
-    if not cooldownLabel or not cooldownLabel.Parent then return end
-    
-    local timeSinceLastDash = tick() - lastButtonPressTime
-    local cooldownRemaining = math.max(0, _G.dashCooldown - timeSinceLastDash)
-    
-    if cooldownRemaining <= 0 then
-        cooldownLabel.Text = "Ready"
-        cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+-- Button connections
+lockButton.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    dashButtonLocked = not dashButtonLocked
+    dashBtn.Draggable = not dashButtonLocked
+    mainFrame.Draggable = not dashButtonLocked
+    openButton.Draggable = not dashButtonLocked
+    lockButton.Draggable = not dashButtonLocked
+    refreshBtn.Draggable = not dashButtonLocked
+    settingsOverlay.Draggable = not dashButtonLocked
+    keybindsOverlay.Draggable = not dashButtonLocked
+
+    if dashButtonLocked then
+        lockButton.Text = "🔒 Locked"
+        notifyGui("All elements locked.")
     else
-        cooldownLabel.Text = string.format("%.2fs", cooldownRemaining)
-        
-        if cooldownRemaining >= 1.5 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        elseif cooldownRemaining >= 0.5 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+        lockButton.Text = "🔓 Unlocked"
+        notifyGui("All elements unlocked.")
+    end
+end)
+
+-- REFRESH BUTTON - clears forced target lock
+refreshBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    forcedLockedPlayer = nil
+    notifyGui("Target lock cleared")
+end)
+
+dashBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dashClickSound:Play()
+        local target = getCurrentTarget()
+        if target then
+            performCircularDash(target)
         else
-            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            notifyGui("No target found!")
         end
     end
 end)
 
--- BUTTON CONNECTIONS
-if lockButton then
-    lockButton.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        dashButtonLocked = not dashButtonLocked
-        
-        if dashButtonLocked then
-            lockButton.Text = "🔒 Locked"
-            notifyGui("All elements locked")
-        else
-            lockButton.Text = "🔓 Unlocked"
-            notifyGui("All elements unlocked")
-        end
-    end)
-end
+closeBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
+    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+    task.wait(0.3)
+    mainFrame.Visible = false
+    openButton.Visible = true
+    lockButton.Visible = true
+    refreshBtn.Visible = true
+end)
 
-if refreshBtn then
-    refreshBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if doubleClickLocked then
-            removeChamOverlay(PlayersService:GetPlayerFromCharacter(doubleClickLocked))
-        end
-        doubleClickLocked = nil
-        notifyGui("Target lock cleared")
-    end)
-end
+minimizeBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
+    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+    task.wait(0.3)
+    mainFrame.Visible = false
+    openButton.Visible = true
+    lockButton.Visible = true
+    refreshBtn.Visible = true
+end)
 
-if dashBtn then
-    dashBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if dashClickSound then dashClickSound:Play() end
-            local target = getCurrentTarget()
-            if target then
-                performCircularDash(target)
-            else
-                notifyGui("No target in range!")
-            end
-        end
-    end)
-end
+openButton.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    openButton.Visible = false
+    lockButton.Visible = false
+    refreshBtn.Visible = false
+    mainFrame.Visible = true
+    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
+    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+end)
 
-if closeBtn then
-    closeBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-        task.wait(0.3)
-        if mainFrame then mainFrame.Visible = false end
-        if openButton then openButton.Visible = true end
-        if lockButton then lockButton.Visible = true end
-        if refreshBtn then refreshBtn.Visible = true end
-    end)
-end
+settingsBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    settingsOverlay.Visible = true
+end)
 
-if minimizeBtn then
-    minimizeBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-        task.wait(0.3)
-        if mainFrame then mainFrame.Visible = false end
-        if openButton then openButton.Visible = true end
-        if lockButton then lockButton.Visible = true end
-        if refreshBtn then refreshBtn.Visible = true end
-    end)
-end
+settingsCloseBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    settingsOverlay.Visible = false
+end)
 
-if openButton then
-    openButton.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        openButton.Visible = false
-        if lockButton then lockButton.Visible = false end
-        if refreshBtn then refreshBtn.Visible = false end
-        if mainFrame then mainFrame.Visible = true end
-        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
-        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-    end)
-end
+keybindsInfoBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    keybindsOverlay.Visible = true
+end)
 
-if settingsBtn then
-    settingsBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if settingsOverlay then
-            settingsOverlay.Visible = not settingsOverlay.Visible
-        end
-    end)
-end
+keybindsCloseBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    keybindsOverlay.Visible = false
+end)
 
-if settingsCloseBtn then
-    settingsCloseBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if settingsOverlay then settingsOverlay.Visible = false end
-    end)
-end
+sizeTextbox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        applyButtonSize(sizeTextbox.Text)
+    end
+end)
 
-if keybindsInfoBtn then
-    keybindsInfoBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if keybindsOverlay then
-            keybindsOverlay.Visible = not keybindsOverlay.Visible
-        end
-    end)
-end
+keybindTextbox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        applyKeybind(keybindTextbox.Text)
+    end
+end)
 
-if keybindsCloseBtn then
-    keybindsCloseBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if keybindsOverlay then keybindsOverlay.Visible = false end
-    end)
-end
+discordBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    if setclipboard then
+        setclipboard("https://discord.gg/YFf3rdXbUf")
+        notifyGui("Discord invite copied.")
+    else
+        notifyGui("Discord: https://discord.gg/YFf3rdXbUf")
+    end
+end)
 
-if sizeTextbox then
-    sizeTextbox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            applyButtonSize(sizeTextbox.Text)
-        end
-    end)
-end
+ytBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    if setclipboard then
+        setclipboard("https://youtube.com/@waspire")
+        notifyGui("YouTube link copied.")
+    else
+        notifyGui("YouTube: https://youtube.com/@waspire")
+    end
+end)
 
-if cooldownTextbox then
-    cooldownTextbox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            applyCooldown(cooldownTextbox.Text)
-        end
-    end)
-end
-
-if distanceTextbox then
-    distanceTextbox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            applyDistance(distanceTextbox.Text)
-        end
-    end)
-end
-
-if dashKeyTextbox then
-    dashKeyTextbox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            applyKeybind(dashKeyTextbox.Text)
-        end
-    end)
-end
-
-if discordBtn then
-    discordBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if setclipboard then
-            setclipboard("https://discord.gg/YFf3rdXbUf")
-            notifyGui("Discord copied!")
-        else
-            notifyGui("Discord: discord.gg/YFf3rdXbUf")
-        end
-    end)
-end
-
-if ytBtn then
-    ytBtn.MouseButton1Click:Connect(function()
-        if uiClickSound then uiClickSound:Play() end
-        if setclipboard then
-            setclipboard("https://youtube.com/@waspire")
-            notifyGui("YouTube copied!")
-        else
-            notifyGui("YouTube: youtube.com/@waspire")
-        end
-    end)
-end
-
-if mainFrame then mainFrame.Visible = true end
+mainFrame.Visible = true
 TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
 TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
 TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
 
 task.delay(0.1, function()
-    if loadSound then loadSound:Play() end
+    loadSound:Play()
 end)
 
-print("subscribe to waspire :)")
+print("subscribe to Waspire :)")
