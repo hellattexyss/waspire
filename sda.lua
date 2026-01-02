@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP (ORIGINAL + COOLDOWN + EXEC SOUND)
+--// SNIPPET 1 - CORE SETUP + RED CHAM SYSTEM
 
 -- Cleanup old GUIs
 pcall(function()
@@ -60,57 +60,66 @@ local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
-
--- Increased dash speed
 local DASH_SPEED = 180
-
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
+local DASH_COOLDOWN = 2.0  -- 2 SECOND COOLDOWN
 
 -- State
 local isDashing = false
 local sideAnimationTrack = nil
 local straightAnimationTrack = nil
 local lastButtonPressTime = -math.huge
-
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
 
--- COOLDOWN SYSTEM (2 seconds) - INJECTED
-local DASH_COOLDOWN = 2
-local lastDashTime = -math.huge
+-- RED CHAM SYSTEM
+local chammedTarget = nil
+local originalColors = {}
 
-local function dashReady()
-    return (tick() - lastDashTime) >= DASH_COOLDOWN
+local function addRedCham(target)
+    if not target or not target:IsA("Model") then return end
+    if chammedTarget == target then return end
+    
+    -- Remove old cham
+    if chammedTarget then
+        removeRedCham()
+    end
+    
+    chammedTarget = target
+    originalColors = {}
+    
+    -- Add red overlay
+    for _, part in pairs(target:GetDescendants()) do
+        if part:IsA("BasePart") then
+            originalColors[part] = part.Color
+            TweenService:Create(part, TweenInfo.new(0.3), {Color = Color3.fromRGB(255, 0, 0)}):Play()
+        end
+    end
 end
 
-local function dashRemaining()
-    local r = DASH_COOLDOWN - (tick() - lastDashTime)
-    return math.max(0, r)
+function removeRedCham()
+    if chammedTarget then
+        for part, origColor in pairs(originalColors) do
+            if part and part.Parent then
+                TweenService:Create(part, TweenInfo.new(0.5), {Color = origColor}):Play()
+            end
+        end
+        originalColors = {}
+        chammedTarget = nil
+    end
 end
 
--- Dash SFX (non-button)
+-- Dash SFX
 local dashSound = Instance.new("Sound")
 dashSound.Name = "DashSFX"
 dashSound.SoundId = "rbxassetid://3084314259"
 dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
-
--- EXECUTION SOUND - INJECTED (safe, fires once at startup)
-pcall(function()
-    local executionSound = Instance.new("Sound")
-    executionSound.SoundId = "rbxassetid://115916891254154"
-    executionSound.Volume = 1
-    executionSound.Parent = WorkspaceService
-    task.defer(function()
-        pcall(function() executionSound:Play() end)
-        task.delay(2.5, function() pcall(function() executionSound:Destroy() end) end)
-    end)
-end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -168,13 +177,18 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
+-- LOAD SOUND (115916891254154)
+local loadSound = Instance.new("Sound")
+loadSound.Name = "LoadSound"
+loadSound.SoundId = "rbxassetid://115916891254154"
+loadSound.Volume = 1
+loadSound.Parent = WorkspaceService
+loadSound:Play()
 
---// END SNIPPET 1 - CORE SETUP + COOLDOWN + EXECUTION SOUND
---// SNIPPET 2 - DASH LOGIC (ORIGINAL) + CHAM SYSTEM (INJECTED)
+notify("Side Dash Assist v2.0", "Press E to Side Dash!")
 
--- subscribe to Waspire :)
---// SNIPPET 2 - DASH LOGIC
+--// SNIPPET 1 END - CORE SETUP COMPLETE
+--// SNIPPET 2 - DASH LOGIC + COOLDOWN CHECK
 
 -- Anim + targeting
 local function getHumanoidAndAnimator()
@@ -212,7 +226,7 @@ local function playSideAnimation(isLeftDirection)
             sideAnimationTrack = loadedAnimation
             loadedAnimation.Priority = Enum.AnimationPriority.Action
             pcall(function() loadedAnimation.Looped = false end)
-            pcall(function() loadedAnimation:Play() end)
+            loadedAnimation:Play()
         end
 
         delay(0.7, function()
@@ -261,7 +275,6 @@ local function findNearestTarget(maxRange)
     return nearestTarget, nearestDistance
 end
 
--- Slider calcs (hardcoded)
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
@@ -274,91 +287,12 @@ local function calculateDashAngle(_degreesSliderValue)
 end
 
 local function calculateDashDistance(gapSliderValue)
-    return 1 + 11 * math.clamp(gapSliderValue or 14, 0, 100) / 100
+    return 1 + 11 * (math.clamp(gapSliderValue or 14, 0, 100) / 100)
 end
-
--- CHAM SYSTEM - INJECTED (safe helpers, only used on dash)
-local chamState = {active = false, model = nil, cons = {}}
-
-local function clearChams()
-    if chamState.cons then
-        for _, c in ipairs(chamState.cons) do pcall(function() c:Disconnect() end) end
-    end
-    chamState.cons = {}
-    if chamState.model and chamState.model.Parent then
-        for _, d in ipairs(chamState.model:GetDescendants()) do
-            if d:IsA("BoxHandleAdornment") and d.Name == "SDA_OppCham" then
-                pcall(function() d:Destroy() end)
-            end
-        end
-    end
-    chamState.active = false
-    chamState.model = nil
-end
-
-local function applyChams(model)
-    clearChams()
-    if not (model and model.Parent) then return end
-    chamState.model = model
-
-    for _, p in ipairs(model:GetDescendants()) do
-        if p:IsA("BasePart") then
-            local b = Instance.new("BoxHandleAdornment")
-            b.Name = "SDA_OppCham"
-            b.Adornee = p
-            b.AlwaysOnTop = true
-            b.Size = p.Size + Vector3.new(0.06, 0.06, 0.06)
-            b.Color3 = Color3.fromRGB(255, 0, 0)
-            b.Transparency = 1
-            b.Parent = p
-        end
-    end
-
-    chamState.active = true
-end
-
-local function fadeChams(toTransparency, timeSec)
-    if not (chamState.model and chamState.model.Parent) then return end
-    local start = tick()
-    local from = nil
-
-    local con
-    con = RunService.RenderStepped:Connect(function()
-        if not (chamState.model and chamState.model.Parent) then
-            pcall(function() con:Disconnect() end)
-            return
-        end
-
-        local t = math.clamp((tick() - start) / math.max(0.01, timeSec), 0, 1)
-
-        for _, p in ipairs(chamState.model:GetDescendants()) do
-            if p:IsA("BasePart") then
-                local b = p:FindFirstChild("SDA_OppCham")
-                if b and b:IsA("BoxHandleAdornment") then
-                    if from == nil then from = b.Transparency end
-                    b.Transparency = from + (toTransparency - from) * t
-                end
-            end
-        end
-
-        if t >= 1 then
-            pcall(function() con:Disconnect() end)
-            if toTransparency >= 0.999 then
-                clearChams()
-            end
-        end
-    end)
-
-    table.insert(chamState.cons, con)
-end
-
---// END SNIPPET 2 - DASH LOGIC + CHAM SYSTEM
---// SNIPPET 3 - DASH EXECUTION (ORIGINAL) + COOLDOWN + CHAMS (INJECTED)
 
 -- Settings
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
-
 PlayersService.PlayerRemoving:Connect(function(removedPlayer)
     if lockedTargetPlayer == removedPlayer then
         lockedTargetPlayer = nil
@@ -372,7 +306,7 @@ local function getCurrentTarget()
             local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
             local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
             if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and HumanoidRootPart then
-                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude <= MAX_TARGET_RANGE then
+                if (targetRoot.Position - HumanoidRootPart.Position).Magnitude > MAX_TARGET_RANGE then
                     return nil
                 else
                     return targetCharacter
@@ -386,6 +320,7 @@ local function getCurrentTarget()
     return findNearestTarget(MAX_TARGET_RANGE)
 end
 
+-- Movement helpers
 local function aimCharacterAtTarget(targetPosition, lerpFactor)
     lerpFactor = lerpFactor or 0.7
     pcall(function()
@@ -414,6 +349,7 @@ local function performDashMovement(targetRootPart, dashSpeed)
     local attachment = Instance.new("Attachment")
     attachment.Name = "DashAttach"
     attachment.Parent = HumanoidRootPart
+
     local linearVelocity = Instance.new("LinearVelocity")
     linearVelocity.Name = "DashLinearVelocity"
     linearVelocity.Attachment0 = attachment
@@ -421,34 +357,65 @@ local function performDashMovement(targetRootPart, dashSpeed)
     linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
     linearVelocity.Parent = HumanoidRootPart
 
-    local hasReachedTarget = false
+    straightAnimationTrack = nil
+    local straightAnimationInstance = nil
+
+    if straightAnimationId then
+        local characterHumanoid, characterAnimator = getHumanoidAndAnimator()
+        if characterHumanoid and characterAnimator then
+            straightAnimationInstance = Instance.new("Animation")
+            straightAnimationInstance.Name = "StraightDashAnim"
+            straightAnimationInstance.AnimationId = "rbxassetid://" .. tostring(straightAnimationId)
+            local success, loadedAnim = pcall(function()
+                return characterAnimator:LoadAnimation(straightAnimationInstance)
+            end)
+            if success and loadedAnim then
+                loadedAnim.Priority = Enum.AnimationPriority.Movement
+                pcall(function() loadedAnim.Looped = false end)
+                pcall(function() loadedAnim:Play() end)
+                straightAnimationTrack = loadedAnim
+            else
+                pcall(function() straightAnimationInstance:Destroy() end)
+            end
+        end
+    end
+
+    pcall(function()
+        dashSound:Stop()
+        dashSound:Play()
+    end)
+
+    -- FIXED: Don't follow moving targets (capture position at start)
+    local capturedTargetPos = targetRootPart.Position
     local isActive = true
     local heartbeatConnection
+
     heartbeatConnection = RunService.Heartbeat:Connect(function()
         if isActive and targetRootPart and targetRootPart.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
-            local targetPosition = targetRootPart.Position
-            local directionToTarget = targetPosition - HumanoidRootPart.Position
+            local directionToTarget = capturedTargetPos - HumanoidRootPart.Position
             local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
-            if horizontalDirection.Magnitude <= TARGET_REACH_THRESHOLD then
+            if horizontalDirection.Magnitude > TARGET_REACH_THRESHOLD then
                 linearVelocity.VectorVelocity = horizontalDirection.Unit * dashSpeed
                 pcall(function()
                     if horizontalDirection.Magnitude > 0.001 then
-                        HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + horizontalDirection.Unit)
+                        HumanoidRootPart.CFrame = CFrame.new(
+                            HumanoidRootPart.Position,
+                            HumanoidRootPart.Position + horizontalDirection.Unit
+                        )
                     end
                 end)
-                pcall(function() aimCharacterAtTarget(targetPosition, 0.56) end)
+                pcall(function()
+                    aimCharacterAtTarget(capturedTargetPos, 0.56)
+                end)
             else
-                hasReachedTarget = true
                 isActive = false
                 heartbeatConnection:Disconnect()
-                pcall(function() linearVelocity:Destroy() end)
-                pcall(function() attachment:Destroy() end)
+                pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
             end
         else
             isActive = false
             heartbeatConnection:Disconnect()
-            pcall(function() linearVelocity:Destroy() end)
-            pcall(function() attachment:Destroy() end)
+            pcall(function() linearVelocity:Destroy() attachment:Destroy() end)
         end
     end)
 end
@@ -478,12 +445,11 @@ local function smoothlyAimAtTarget(targetRootPart, duration)
                         horizontalDirection = Vector3.new(1, 0, 0)
                     end
                     local targetDirection = horizontalDirection.Unit
-                    local finalLookVector = characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
+                    local finalLookVector =
+                        characterLookVector:Lerp(Vector3.new(targetDirection.X, characterLookVector.Y, targetDirection.Z).Unit, easedProgress)
                     HumanoidRootPart.CFrame = CFrame.new(characterPosition, characterPosition + finalLookVector)
                 end)
-                if progress >= 1 then
-                    aimTweenConnection:Disconnect()
-                end
+                if progress >= 1 then aimTweenConnection:Disconnect() end
             else
                 aimTweenConnection:Disconnect()
             end
@@ -503,20 +469,19 @@ local function communicateWithServer(communicationData)
     end)
 end
 
--- Main circular dash ground fix 120 better anim end
+-- Main circular dash
 local function performCircularDash(targetCharacter)
-    if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then
+    if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then return end
+    
+    -- COOLDOWN CHECK (2 seconds)
+    local timeSinceDash = tick() - lastButtonPressTime
+    if timeSinceDash < DASH_COOLDOWN then
         return
     end
-
-    -- COOLDOWN GATE - INJECTED
-    if not dashReady() then
-        notify("Cooldown", "Dash on cooldown!")
-        return
-    end
-    lastDashTime = tick()
-
+    
     isDashing = true
+    addRedCham(targetCharacter)  -- ADD RED CHAM ON DASH
+
     local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
     local originalAutoRotate = characterHumanoid and characterHumanoid.AutoRotate
     if characterHumanoid then
@@ -537,28 +502,25 @@ local function performCircularDash(targetCharacter)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
     local targetRoot = targetCharacter.HumanoidRootPart
 
-    -- APPLY CHAMS - INJECTED
-    applyChams(targetCharacter)
-    fadeChams(0, 0.3)
-
-    if MINTARGETDISTANCE < (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
+    if MIN_TARGET_DISTANCE <= (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
     end
 
     if targetRoot and targetRoot.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
-        -- SNAPSHOT TARGET - INJECTED (prevents following)
-        local snapshotTargetPosition = targetRoot.Position
+        local targetPosition = targetRoot.Position
         local characterPosition = HumanoidRootPart.Position
         local characterRightVector = HumanoidRootPart.CFrame.RightVector
         local directionToTarget = targetRoot.Position - HumanoidRootPart.Position
         if directionToTarget.Magnitude < 0.001 then
             directionToTarget = HumanoidRootPart.CFrame.LookVector
         end
+
         local isLeftDirection = characterRightVector:Dot(directionToTarget.Unit) < 0
         playSideAnimation(isLeftDirection)
+
         local directionMultiplier = isLeftDirection and 1 or -1
-        local angleToTarget = math.atan2(characterPosition.Z - snapshotTargetPosition.Z, characterPosition.X - snapshotTargetPosition.X)
-        local horizontalDistance = (Vector3.new(characterPosition.X, 0, characterPosition.Z) - Vector3.new(snapshotTargetPosition.X, 0, snapshotTargetPosition.Z)).Magnitude
+        local angleToTarget = math.atan2(characterPosition.Z - targetPosition.Z, characterPosition.X - targetPosition.X)
+        local horizontalDistance = (Vector3.new(characterPosition.X, 0, characterPosition.Z) - Vector3.new(targetPosition.X, 0, targetPosition.Z)).Magnitude
         local clampedDistance = math.clamp(horizontalDistance, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
 
         local startTime = tick()
@@ -574,7 +536,8 @@ local function performCircularDash(targetCharacter)
                 task.delay(CAMERA_FOLLOW_DELAY, function()
                     shouldEndDash = true
                     restoreAutoRotate()
-                    lastButtonPressTime = tick()
+                    lastButtonPressTime = tick()  -- SET COOLDOWN TIME
+                    removeRedCham()  -- REMOVE RED CHAM AFTER DASH
                     if dashEnded then
                         isDashing = false
                     end
@@ -583,40 +546,52 @@ local function performCircularDash(targetCharacter)
         end
 
         if m1ToggleEnabled then
-            communicateWithServer({Mobile = true, Goal = "LeftClick"})
+            communicateWithServer({{Mobile = true, Goal = "LeftClick"}})
             task.delay(0.05, function()
-                communicateWithServer({Goal = "LeftClickRelease", Mobile = true})
+                communicateWithServer({{Goal = "LeftClickRelease", Mobile = true}})
             end)
         end
 
         if dashToggleEnabled then
-            communicateWithServer({Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"})
+            communicateWithServer({{Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"}})
         end
 
         movementConnection = RunService.Heartbeat:Connect(function()
             local currentTime = tick()
             local progress = math.clamp((currentTime - startTime) / dashDuration, 0, 1)
             local easedProgress = easeInOutCubic(progress)
-            local aimProgress = math.clamp(progress / 1.5, 0, 1)
+            local aimProgress = math.clamp(progress * 1.5, 0, 1)
             local currentRadius = clampedDistance + (dashDistance - clampedDistance) * easeInOutCubic(aimProgress)
             local clampedRadius = math.clamp(currentRadius, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
-            local currentTargetPosition = snapshotTargetPosition
+
+            local currentTargetPosition = targetRoot.Position
             local playerGroundY = HumanoidRootPart.Position.Y
-            local currentAngle = angleToTarget + (directionMultiplier * dashAngleRad * easeInOutCubic(progress))
+
+            local currentAngle = angleToTarget + directionMultiplier * dashAngleRad * easeInOutCubic(progress)
             local circleX = currentTargetPosition.X + clampedRadius * math.cos(currentAngle)
             local circleZ = currentTargetPosition.Z + clampedRadius * math.sin(currentAngle)
             local newPosition = Vector3.new(circleX, playerGroundY, circleZ)
 
-            local angleToTargetPosition = math.atan2(currentTargetPosition.Z - newPosition.Z, currentTargetPosition.X - newPosition.X)
+            if targetRoot then
+                currentTargetPosition = targetRoot.Position or currentTargetPosition
+            end
+
+            local angleToTargetPosition = math.atan2((currentTargetPosition - newPosition).Z, (currentTargetPosition - newPosition).X)
             local characterAngle = math.atan2(HumanoidRootPart.CFrame.LookVector.Z, HumanoidRootPart.CFrame.LookVector.X)
             local finalCharacterAngle = characterAngle + getAngleDifference(angleToTargetPosition, characterAngle) * DIRECTION_LERP_FACTOR
+
             pcall(function()
-                HumanoidRootPart.CFrame = CFrame.new(newPosition, newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle)))
+                HumanoidRootPart.CFrame = CFrame.new(
+                    newPosition,
+                    newPosition + Vector3.new(math.cos(finalCharacterAngle), 0, math.sin(finalCharacterAngle))
+                )
             end)
 
             if not hasStartedAim and CIRCLE_COMPLETION_THRESHOLD <= easedProgress then
                 hasStartedAim = true
-                pcall(function() smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY) end)
+                pcall(function()
+                    smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY)
+                end)
                 startDashEndSequence()
             end
 
@@ -626,32 +601,34 @@ local function performCircularDash(targetCharacter)
                     if sideAnimationTrack and sideAnimationTrack.IsPlaying then
                         sideAnimationTrack:Stop()
                     end
+                    sideAnimationTrack = nil
                 end)
-                sideAnimationTrack = nil
+
                 if not hasStartedAim then
                     hasStartedAim = true
-                    pcall(function() smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY) end)
+                    pcall(function()
+                        smoothlyAimAtTarget(targetRoot, CAMERA_FOLLOW_DELAY)
+                    end)
+                    startDashEndSequence()
                 end
-                startDashEndSequence()
+
+                dashEnded = true
+                if shouldEndDash then
+                    isDashing = false
+                end
             end
         end)
-
-        dashEnded = true
-        if shouldEndDash then
-            isDashing = false
-            fadeChams(1, 0.3) -- FADE OUT CHAMS - INJECTED
-        end
     else
         restoreAutoRotate()
         isDashing = false
-        fadeChams(1, 0.3) -- FADE OUT CHAMS - INJECTED
+        removeRedCham()
     end
 end
 
--- E key
+-- E key (VARIABLE KEYBIND)
 InputService.InputBegan:Connect(function(inp, gp)
     if gp or isDashing or isCharacterDisabled() then return end
-    if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == Enum.KeyCode.E then
+    if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _G.dashKeybind then
         local target = getCurrentTarget()
         if target then
             performCircularDash(target)
@@ -659,11 +636,8 @@ InputService.InputBegan:Connect(function(inp, gp)
     end
 end)
 
---// END SNIPPET 3 - DASH EXECUTION + COOLDOWN + CHAMS
---// SNIPPET 4 - GUI + COOLDOWN NOTIFIER
-
--- subscribe to Waspire :)
---// SNIPPET 3 - GUI RED BUTTON
+--// SNIPPET 2 END - DASH LOGIC COMPLETE
+--// SNIPPET 3 - GUI + RED BUTTON + COOLDOWN LABEL
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -683,11 +657,43 @@ dashClickSound.SoundId = "rbxassetid://9080070218"
 dashClickSound.Volume = 1
 dashClickSound.Parent = gui
 
-local loadSound = Instance.new("Sound")
-loadSound.Name = "LoadSound"
-loadSound.SoundId = "rbxassetid://87437544236708"
-loadSound.Volume = 1
-loadSound.Parent = gui
+-- COOLDOWN LABEL (BOTTOM LEFT)
+local cooldownLabel = Instance.new("TextLabel")
+cooldownLabel.Name = "CooldownLabel"
+cooldownLabel.Size = UDim2.new(0, 110, 0, 35)
+cooldownLabel.Position = UDim2.new(0, 10, 1, -50)
+cooldownLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+cooldownLabel.BackgroundTransparency = 0.2
+cooldownLabel.BorderSizePixel = 0
+cooldownLabel.Text = "Ready!"
+cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+cooldownLabel.TextSize = 13
+cooldownLabel.Font = Enum.Font.GothamBold
+cooldownLabel.Parent = gui
+Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
+
+-- UPDATE COOLDOWN INDICATOR
+RunService.Heartbeat:Connect(function()
+    if cooldownLabel and cooldownLabel.Parent then
+        local timeSinceDash = tick() - lastButtonPressTime
+        local cooldownRemaining = math.max(0, DASH_COOLDOWN - timeSinceDash)
+        
+        if cooldownRemaining <= 0 then
+            cooldownLabel.Text = "Ready!"
+            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        else
+            cooldownLabel.Text = string.format("%.1fs", cooldownRemaining)
+            
+            if cooldownRemaining > 1.2 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)  -- RED
+            elseif cooldownRemaining > 0.5 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)  -- YELLOW
+            else
+                cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- GREEN
+            end
+        end
+    end
+end)
 
 -- Main frame
 local mainFrame = Instance.new("Frame")
@@ -757,7 +763,7 @@ versionLabel.Size = UDim2.new(0, 55, 0, 24)
 versionLabel.Position = UDim2.new(0, 215, 0, 13)
 versionLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 versionLabel.BorderSizePixel = 0
-versionLabel.Text = "v1.0"
+versionLabel.Text = "v1.1"
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextSize = 13
 versionLabel.Font = Enum.Font.GothamBold
@@ -776,7 +782,7 @@ authorLabel.TextXAlignment = Enum.TextXAlignment.Left
 authorLabel.TextTransparency = 0.28
 authorLabel.Parent = headerFrame
 
--- Close minimize
+-- Close / minimize
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 35, 0, 35)
 closeBtn.Position = UDim2.new(1, -45, 0, 7)
@@ -803,12 +809,12 @@ minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
--- Settings social
+-- Settings button
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Size = UDim2.new(0, 36, 0, 36)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
 settingsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-settingsBtn.Text = "⚙️"
+settingsBtn.Text = "⚙"
 settingsBtn.Font = Enum.Font.GothamBold
 settingsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 settingsBtn.TextSize = 19
@@ -816,6 +822,20 @@ settingsBtn.BorderSizePixel = 0
 settingsBtn.Style = Enum.ButtonStyle.Custom
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
+
+-- KEYBINDS BUTTON (NEXT TO SETTINGS)
+local keybindsBtn = Instance.new("TextButton")
+keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
+keybindsBtn.Position = UDim2.new(0, 56, 1, -46)
+keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+keybindsBtn.Text = "🖱️"
+keybindsBtn.Font = Enum.Font.GothamBold
+keybindsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+keybindsBtn.TextSize = 19
+keybindsBtn.BorderSizePixel = 0
+keybindsBtn.Style = Enum.ButtonStyle.Custom
+keybindsBtn.Parent = mainFrame
+Instance.new("UICorner", keybindsBtn).CornerRadius = UDim.new(1, 0)
 
 local discordBtn = Instance.new("TextButton")
 discordBtn.Name = "DiscordButton"
@@ -830,7 +850,6 @@ discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 discordBtn.Style = Enum.ButtonStyle.Custom
 discordBtn.Parent = mainFrame
 Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 10)
-
 local discordGradient = Instance.new("UIGradient", discordBtn)
 discordGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 135, 255)),
@@ -851,7 +870,6 @@ ytBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ytBtn.Style = Enum.ButtonStyle.Custom
 ytBtn.Parent = mainFrame
 Instance.new("UICorner", ytBtn).CornerRadius = UDim.new(0, 10)
-
 local ytGradient = Instance.new("UIGradient", ytBtn)
 ytGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)),
@@ -859,7 +877,7 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay with keybind info
+-- Settings overlay
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
 settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
@@ -871,7 +889,6 @@ settingsOverlay.Visible = false
 settingsOverlay.Parent = gui
 settingsOverlay.Draggable = true
 Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
-
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
 overlayGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
@@ -938,7 +955,7 @@ local keyInfo2 = Instance.new("TextLabel")
 keyInfo2.Size = UDim2.new(1, -20, 0, 24)
 keyInfo2.Position = UDim2.new(0, 10, 0, 66)
 keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "Mobile: Button"
+keyInfo2.Text = "Mobile Button :)"
 keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
 keyInfo2.TextSize = 15
 keyInfo2.Font = Enum.Font.Gotham
@@ -956,7 +973,136 @@ comingSoon.Font = Enum.Font.GothamBold
 comingSoon.TextXAlignment = Enum.TextXAlignment.Center
 comingSoon.Parent = settingsOverlay
 
--- Open lock buttons
+--// SNIPPET 3 END - GUI + COOLDOWN COMPLETE
+--// SNIPPET 4 - KEYBINDS OVERLAY + FUNCTIONALITY
+
+-- KEYBINDS OVERLAY
+local keybindsOverlay = Instance.new("Frame")
+keybindsOverlay.Name = "KeybindsOverlay"
+keybindsOverlay.Size = UDim2.new(0, 320, 0, 280)
+keybindsOverlay.Position = UDim2.new(0.5, -160, 0.2, 0)
+keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+keybindsOverlay.BackgroundTransparency = 1
+keybindsOverlay.BorderSizePixel = 0
+keybindsOverlay.Visible = false
+keybindsOverlay.Parent = gui
+keybindsOverlay.Draggable = true
+Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 19)
+
+local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
+keybindsGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+keybindsGradient.Rotation = 90
+
+local keybindsTitle = Instance.new("TextLabel")
+keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
+keybindsTitle.Position = UDim2.new(0, 16, 0, 5)
+keybindsTitle.BackgroundTransparency = 1
+keybindsTitle.Text = "Keybinds"
+keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindsTitle.TextSize = 21
+keybindsTitle.Font = Enum.Font.GothamBold
+keybindsTitle.TextXAlignment = Enum.TextXAlignment.Left
+keybindsTitle.Parent = keybindsOverlay
+
+local keybindsCloseBtn = Instance.new("TextButton")
+keybindsCloseBtn.Size = UDim2.new(0, 35, 0, 35)
+keybindsCloseBtn.Position = UDim2.new(1, -45, 0, 6)
+keybindsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+keybindsCloseBtn.Text = "X"
+keybindsCloseBtn.Font = Enum.Font.GothamBold
+keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+keybindsCloseBtn.TextSize = 19
+keybindsCloseBtn.BorderSizePixel = 0
+keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
+keybindsCloseBtn.Parent = keybindsOverlay
+Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
+
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Size = UDim2.new(1, -32, 0, 25)
+keybindLabel.Position = UDim2.new(0, 16, 0, 55)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Dash Keybind:"
+keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+keybindLabel.TextSize = 15
+keybindLabel.Font = Enum.Font.GothamBold
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.Parent = keybindsOverlay
+
+local keybindTextbox = Instance.new("TextBox")
+keybindTextbox.Size = UDim2.new(1, -32, 0, 32)
+keybindTextbox.Position = UDim2.new(0, 16, 0, 80)
+keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindTextbox.PlaceholderText = "Enter key (E, Q, R, etc)"
+keybindTextbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+keybindTextbox.BorderSizePixel = 0
+keybindTextbox.Text = "E"
+keybindTextbox.TextSize = 14
+keybindTextbox.Font = Enum.Font.Gotham
+keybindTextbox.Parent = keybindsOverlay
+Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 8)
+
+local currentKeyLabel = Instance.new("TextLabel")
+currentKeyLabel.Size = UDim2.new(1, -32, 0, 24)
+currentKeyLabel.Position = UDim2.new(0, 16, 0, 120)
+currentKeyLabel.BackgroundTransparency = 1
+currentKeyLabel.Text = "Current Key: E"
+currentKeyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+currentKeyLabel.TextSize = 13
+currentKeyLabel.Font = Enum.Font.Gotham
+currentKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+currentKeyLabel.Parent = keybindsOverlay
+
+local keyInfoBox = Instance.new("Frame")
+keyInfoBox.Size = UDim2.new(1, -32, 0, 110)
+keyInfoBox.Position = UDim2.new(0, 16, 0, 150)
+keyInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keyInfoBox.BorderSizePixel = 0
+keyInfoBox.Parent = keybindsOverlay
+Instance.new("UICorner", keyInfoBox).CornerRadius = UDim.new(0, 8)
+
+local keyInfoText = Instance.new("TextLabel")
+keyInfoText.Size = UDim2.new(1, -12, 1, -12)
+keyInfoText.Position = UDim2.new(0, 6, 0, 6)
+keyInfoText.BackgroundTransparency = 1
+keyInfoText.Text = "Valid Keys:\nE, Q, R, X, C, V, F, G, Z, T, Y, U\n\nPress Enter to apply new keybind"
+keyInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+keyInfoText.TextSize = 12
+keyInfoText.Font = Enum.Font.Gotham
+keyInfoText.TextXAlignment = Enum.TextXAlignment.Left
+keyInfoText.TextYAlignment = Enum.TextYAlignment.Top
+keyInfoText.TextWrapped = true
+keyInfoText.Parent = keyInfoBox
+
+-- KEYBIND CHANGE HANDLER
+_G.dashKeybind = Enum.KeyCode.E  -- DEFAULT KEYBIND
+
+local keyMap = {
+    ["E"] = Enum.KeyCode.E, ["Q"] = Enum.KeyCode.Q, ["R"] = Enum.KeyCode.R,
+    ["X"] = Enum.KeyCode.X, ["C"] = Enum.KeyCode.C, ["V"] = Enum.KeyCode.V,
+    ["F"] = Enum.KeyCode.F, ["G"] = Enum.KeyCode.G, ["Z"] = Enum.KeyCode.Z,
+    ["T"] = Enum.KeyCode.T, ["Y"] = Enum.KeyCode.Y, ["U"] = Enum.KeyCode.U,
+}
+
+keybindTextbox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local inputKey = string.upper(keybindTextbox.Text or "")
+        if keyMap[inputKey] then
+            _G.dashKeybind = keyMap[inputKey]
+            currentKeyLabel.Text = "Current Key: " .. inputKey
+            notify("Keybind Changed", "Dash keybind set to " .. inputKey)
+            keybindTextbox.Text = ""
+        else
+            notify("Invalid Key", "Use: E, Q, R, X, C, V, F, G, Z, T, Y, U")
+        end
+    end
+end)
+
+-- Open / lock buttons
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
 openButton.Size = UDim2.new(0, 90, 0, 34)
@@ -979,7 +1125,7 @@ lockButton.Name = "LockButton"
 lockButton.Size = UDim2.new(0, 90, 0, 34)
 lockButton.Position = UDim2.new(0, 110, 0.5, -17)
 lockButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-lockButton.Text = "Unlocked"
+lockButton.Text = "🔓 Unlocked"
 lockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 lockButton.TextSize = 13
 lockButton.Font = Enum.Font.GothamBold
@@ -992,7 +1138,7 @@ Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
 -- Red dash button
 local dashBtn = Instance.new("Frame")
-dashBtn.Name = "DashButtonFinal"
+dashBtn.Name = "DashButton_Final"
 dashBtn.Size = UDim2.new(0, 110, 0, 110)
 dashBtn.Position = UDim2.new(1, -125, 0.5, -55)
 dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
@@ -1001,7 +1147,6 @@ dashBtn.Parent = gui
 dashBtn.Active = true
 dashBtn.Draggable = true
 Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
-
 local dashGrad = Instance.new("UIGradient", dashBtn)
 dashGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
@@ -1028,156 +1173,4 @@ local function notifyGui(text)
     end)
 end
 
--- Logic
-lockButton.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    dashButtonLocked = not dashButtonLocked
-    dashBtn.Draggable = not dashButtonLocked
-    mainFrame.Draggable = not dashButtonLocked
-    openButton.Draggable = not dashButtonLocked
-    lockButton.Draggable = not dashButtonLocked
-    if dashButtonLocked then
-        lockButton.Text = "Locked"
-        notifyGui("Dash button GUI locked in place.")
-    else
-        lockButton.Text = "Unlocked"
-        notifyGui("Dash button GUI can be dragged again.")
-    end
-end)
-
-dashBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dashClickSound:Play()
-        local target = getCurrentTarget()
-        if target then
-            performCircularDash(target)
-        else
-            notifyGui("No target found!")
-        end
-    end
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    task.wait(0.3)
-    mainFrame.Visible = false
-    openButton.Visible = true
-    lockButton.Visible = true
-end)
-
-minimizeBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    task.wait(0.3)
-    mainFrame.Visible = false
-    openButton.Visible = true
-    lockButton.Visible = true
-end)
-
-openButton.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    openButton.Visible = false
-    lockButton.Visible = false
-    mainFrame.Visible = true
-    TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
-    TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-    TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-end)
-
-settingsBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    settingsOverlay.Visible = true
-    TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
-end)
-
-settingsCloseBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    local t = TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 1})
-    t:Play()
-    t.Completed:Connect(function()
-        settingsOverlay.Visible = false
-    end)
-end)
-
-discordBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if setclipboard then
-        setclipboard("https://discord.gg/YFf3rdXbUf")
-        notifyGui("Discord invite copied to clipboard.")
-    else
-        notifyGui("Discord: https://discord.gg/YFf3rdXbUf")
-    end
-end)
-
-ytBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if setclipboard then
-        setclipboard("https://youtube.com/@waspire")
-        notifyGui("YouTube link copied to clipboard.")
-    else
-        notifyGui("YouTube: https://youtube.com/@waspire")
-    end
-end)
-
--- COOLDOWN NOTIFIER - INJECTED AT END
-local cooldownLabel = Instance.new("TextLabel")
-cooldownLabel.Name = "CooldownLabel"
-cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
-cooldownLabel.Position = UDim2.new(0, 10, 1, -60)
-cooldownLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-cooldownLabel.BackgroundTransparency = 0.3
-cooldownLabel.BorderSizePixel = 0
-cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-cooldownLabel.TextSize = 16
-cooldownLabel.Font = Enum.Font.GothamBold
-cooldownLabel.TextStrokeTransparency = 0.5
-cooldownLabel.Parent = gui
-Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
-
--- COOLDOWN LIVE UPDATE
-local cooldownConnection
-local function updateCooldown()
-    if cooldownConnection then pcall(function() cooldownConnection:Disconnect() end) end
-    
-    cooldownConnection = RunService.Heartbeat:Connect(function()
-        if not gui or not gui.Parent then return end
-        
-        local remaining = dashRemaining()
-        
-        if remaining > 0 then
-            local displayTime = math.ceil(remaining * 10) / 10
-            cooldownLabel.Text = string.format("%.1f", displayTime) .. "s"
-            
-            if displayTime > 1.2 then
-                cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-            elseif displayTime > 0.5 then
-                cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-            else
-                cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            end
-        else
-            cooldownLabel.Text = "Ready!"
-            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-        end
-    end)
-end
-
-updateCooldown()
-
--- Initial show
-mainFrame.Visible = true
-TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
-TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-TweenService:Create(borderFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-task.delay(0.1, function()
-    loadSound:Play()
-end)
-
-print("subscribe to Waspire")
-
---// END SNIPPET 4 - GUI + COOLDOWN NOTIFIER
+--// SNIPPET 4 END - KEYBINDS COMPLETE
