@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP WITH COOLDOWN NOTIFIER & KEYBINDS
+--// SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND
 
 -- Cleanup old GUIs
 pcall(function()
@@ -60,51 +60,29 @@ local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
-local DASH_COOLDOWN = 2.0
-
--- Increased dash speed
 local DASH_SPEED = 180
-
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
 
--- State
+-- COOLDOWN SYSTEM (2 seconds)
+local DASH_COOLDOWN = 2
+local lastDashTime = 0
+
+-- STATE
 local isDashing = false
 local sideAnimationTrack = nil
 local straightAnimationTrack = nil
-local lastDashTime = 0
 local lastButtonPressTime = -math.huge
-
 local isAutoRotateDisabled = false
 local autoRotateConnection = nil
 
--- Keybind State
-local KEYBINDS = {
-    Dash = "E",
-    Sprint = "W"
-}
+-- CHAMS FOR OPPONENT
+local chammedTargets = {}
 
-local function savekeybinds()
-    pcall(function()
-        local data = HttpService:JSONEncode(KEYBINDS)
-        writefile("sda_keybinds.json", data)
-    end)
-end
-
-local function loadKeybinds()
-    pcall(function()
-        if readfile("sda_keybinds.json") then
-            KEYBINDS = HttpService:JSONDecode(readfile("sda_keybinds.json"))
-        end
-    end)
-end
-
-loadKeybinds()
-
--- Dash SFX (non-button) + Execute sound
+-- Dash SFX (non-button)
 local dashSound = Instance.new("Sound")
 dashSound.Name = "DashSFX"
 dashSound.SoundId = "rbxassetid://3084314259"
@@ -112,17 +90,15 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
-local executeSound = Instance.new("Sound")
-executeSound.Name = "ExecuteSound"
-executeSound.SoundId = "rbxassetid://115916891254154"
-executeSound.Volume = 0.7
-executeSound.Looped = false
-executeSound.Parent = WorkspaceService
-
--- Play execute sound on script load
-task.delay(0.5, function()
-    executeSound:Play()
-end)
+-- EXECUTION SOUND
+local executionSound = Instance.new("Sound")
+executionSound.Name = "ExecutionSFX"
+executionSound.SoundId = "rbxassetid://115916891254154"
+executionSound.Volume = 1
+executionSound.Looped = false
+executionSound.Parent = WorkspaceService
+task.wait(0.05)
+pcall(function() executionSound:Play() end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -180,10 +156,10 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v2.0", "Loaded! Press " .. KEYBINDS.Dash .. " or click the dash button")
+notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
 
--- SNIPPET 1 END --
---// SNIPPET 2 - DASH LOGIC WITH RED CHAM & FIXED FOLLOWING
+--// END SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND
+--// SNIPPET 2 - DASH LOGIC + OPPONENT CHAMS + FIXED FOLLOW BUG
 
 -- Anim + targeting
 local function getHumanoidAndAnimator()
@@ -270,7 +246,7 @@ local function findNearestTarget(maxRange)
     return nearestTarget, nearestDistance
 end
 
--- Slider calcs (hardcoded)
+-- Slider calcs
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
@@ -282,708 +258,557 @@ local function calculateDashAngle(_degreesSliderValue)
     return 120
 end
 
--- CHAM EFFECT: RED BOX AROUND TARGET
-local function createChamEffect(targetCharacter)
-    if not targetCharacter then return end
-    
-    local humanoidRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return end
-    
+-- CHAM SYSTEM FOR OPPONENTS
+local function createCham(targetPart)
     local cham = Instance.new("BoxHandleAdornment")
-    cham.Name = "DashCham"
-    cham.Adornee = humanoidRootPart
-    cham.Size = humanoidRootPart.Size + Vector3.new(0.2, 0.2, 0.2)
-    cham.Color3 = Color3.fromRGB(255, 0, 0)
-    cham.Transparency = 1
-    cham.Parent = humanoidRootPart
-    
-    -- Fade in
-    local startTime = tick()
-    local fadeInDuration = 0.3
-    local fadeInConnection
-    fadeInConnection = RunService.RenderStepped:Connect(function()
-        local elapsed = tick() - startTime
-        local progress = math.clamp(elapsed / fadeInDuration, 0, 1)
-        if cham and cham.Parent then
-            cham.Transparency = 1 - progress
-        else
-            fadeInConnection:Disconnect()
-        end
-        if progress >= 1 then
-            fadeInConnection:Disconnect()
-        end
-    end)
-    
+    cham.Name = "OpponentCham"
+    cham.Size = targetPart.Size + Vector3.new(0.1, 0.1, 0.1)
+    cham.Adornee = targetPart
+    cham.Color3 = Color3.fromRGB(255, 0, 0) -- RED
+    cham.Transparency = 0
+    cham.Parent = targetPart
     return cham
 end
 
-local function removeChamEffect(cham)
-    if not cham or not cham.Parent then return end
+local function fadeChamIn(targetModel, duration)
+    if not targetModel or not targetModel.Parent then return end
     
     local startTime = tick()
-    local fadeOutDuration = 0.3
-    local fadeOutConnection
-    fadeOutConnection = RunService.RenderStepped:Connect(function()
+    local chamConnection
+    chamConnection = RunService.RenderStepped:Connect(function()
         local elapsed = tick() - startTime
-        local progress = math.clamp(elapsed / fadeOutDuration, 0, 1)
-        if cham and cham.Parent then
-            cham.Transparency = 1 + progress
-        else
-            fadeOutConnection:Disconnect()
-            return
+        local progress = math.clamp(elapsed / duration, 0, 1)
+        
+        for _, part in pairs(targetModel:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local cham = part:FindFirstChild("OpponentCham")
+                if cham and cham:IsA("BoxHandleAdornment") then
+                    cham.Transparency = 1 - progress
+                end
+            end
         end
+        
         if progress >= 1 then
-            fadeOutConnection:Disconnect()
-            pcall(function() cham:Destroy() end)
+            chamConnection:Disconnect()
         end
     end)
 end
 
--- FIXED DASH FOLLOWING: Don't follow if target is moving/attacking
-local function isDashFollowAllowed(targetCharacter)
-    if not targetCharacter or not targetCharacter.Parent then return false end
+local function fadeChamOut(targetModel, duration)
+    if not targetModel or not targetModel.Parent then return end
     
-    local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
-    if not targetHumanoid then return false end
-    
-    -- Don't follow if humanoid is in specific states (moving, attacking, etc)
-    local success, state = pcall(function() return targetHumanoid:GetState() end)
-    if success then
-        if state == Enum.HumanoidStateType.Running or 
-           state == Enum.HumanoidStateType.Jumping or
-           state == Enum.HumanoidStateType.Flying or
-           state == Enum.HumanoidStateType.Freefall then
-            return false
+    local startTime = tick()
+    local chamConnection
+    chamConnection = RunService.RenderStepped:Connect(function()
+        local elapsed = tick() - startTime
+        local progress = math.clamp(elapsed / duration, 0, 1)
+        
+        for _, part in pairs(targetModel:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local cham = part:FindFirstChild("OpponentCham")
+                if cham and cham:IsA("BoxHandleAdornment") then
+                    cham.Transparency = progress
+                end
+            end
         end
-    end
-    
-    -- Check if moving fast
-    local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if targetRoot and targetRoot.AssemblyLinearVelocity.Magnitude > 50 then
-        return false
-    end
-    
-    return true
+        
+        if progress >= 1 then
+            for _, part in pairs(targetModel:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local cham = part:FindFirstChild("OpponentCham")
+                    if cham then pcall(function() cham:Destroy() end) end
+                end
+            end
+            chamConnection:Disconnect()
+        end
+    end)
 end
 
--- SNIPPET 2 END --
---// SNIPPET 3 - DASH EXECUTION & COOLDOWN NOTIFIER
+--// END SNIPPET 2 - DASH LOGIC + OPPONENT CHAMS + FIXED FOLLOW BUG
+--// SNIPPET 3 - DASH EXECUTION WITH FIXED FOLLOW SYSTEM + COOLDOWN
 
-local chamEffect = nil
-
-local function executeDash(targetCharacter, direction)
-    if isDashing or isCharacterDisabled() then return end
+local function performDash(targetCharacter, speedSliderValue)
+    if isCharacterDisabled() then return end
     
-    -- Check cooldown
-    if (tick() - lastDashTime) < DASH_COOLDOWN then
-        notify("Cooldown", "Dash is on cooldown!")
+    -- COOLDOWN CHECK
+    local currentTime = tick()
+    if currentTime - lastDashTime < DASH_COOLDOWN then
+        notify("Cooldown", "Dash on cooldown!")
         return
     end
+    lastDashTime = currentTime
     
     isDashing = true
-    lastDashTime = tick()
+    isAutoRotateDisabled = true
+    
+    if Humanoid then
+        pcall(function() Humanoid.AutoRotate = false end)
+    end
+    
+    local dashDuration = calculateDashDuration(speedSliderValue)
+    local targetHumanoid, animator = getHumanoidAndAnimator()
+    local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+    local startPosition = HumanoidRootPart.Position
+    local targetPosition = targetRoot and targetRoot.Position or (HumanoidRootPart.Position + HumanoidRootPart.CFrame.LookVector * 30)
+    
+    -- CHAM SYSTEM
+    if targetRoot then
+        chammedTargets[targetCharacter] = true
+        for _, part in pairs(targetCharacter:GetDescendants()) do
+            if part:IsA("BasePart") and not part:FindFirstChild("OpponentCham") then
+                createCham(part)
+            end
+        end
+        fadeChamIn(targetCharacter, 0.3)
+    end
+    
     dashSound:Play()
     
-    local targetHumanoid = Character:FindFirstChildOfClass("Humanoid")
-    if not targetHumanoid then isDashing = false return end
+    -- Blur effect
+    local blurTween = TweenService:Create(blur, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 30})
+    blurTween:Play()
     
-    local targetAnimator = targetHumanoid:FindFirstChildOfClass("Animator")
-    if targetAnimator then
-        local animationInstance = Instance.new("Animation")
-        animationInstance.AnimationId = "rbxassetid://" .. tostring(straightAnimationId)
-        local success, animation = pcall(function() return targetAnimator:LoadAnimation(animationInstance) end)
-        if success and animation then
-            straightAnimationTrack = animation
-            animation.Priority = Enum.AnimationPriority.Action
-            animation:Play()
+    local startTime = tick()
+    local dashDirection = (targetPosition - startPosition).Unit
+    local targetDistance = (targetPosition - startPosition).Magnitude
+    local actualDistance = math.clamp(targetDistance, MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
+    
+    -- FIXED: Snapshot opponent position at dash START, don't follow during dash
+    local snapshotTargetPos = targetRoot and targetRoot.Position or targetPosition
+    
+    while isDashing and tick() - startTime < dashDuration and (Character and Character.Parent) do
+        if isCharacterDisabled() then break end
+        
+        local elapsed = tick() - startTime
+        local progress = math.clamp(elapsed / dashDuration, 0, 1)
+        local easedProgress = easeInOutCubic(progress)
+        
+        local currentPosition = startPosition:Lerp(snapshotTargetPos, easedProgress * (actualDistance / targetDistance))
+        
+        if HumanoidRootPart then
+            HumanoidRootPart.CFrame = CFrame.new(currentPosition, currentPosition + dashDirection)
+            HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
         end
+        
+        RunService.RenderStepped:Wait()
     end
     
-    -- Create cham if dashing towards opponent
-    if targetCharacter and targetCharacter.Parent then
-        chamEffect = createChamEffect(targetCharacter)
+    isDashing = false
+    isAutoRotateDisabled = false
+    
+    if Humanoid then
+        pcall(function() Humanoid.AutoRotate = true end)
     end
     
-    local dashDuration = calculateDashDuration(49)
-    local traveledDistance = 0
+    -- Fade out blur
+    local blurTweenOut = TweenService:Create(blur, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = 0})
+    blurTweenOut:Play()
     
-    local connection
-    connection = RunService.Heartbeat:Connect(function(deltaTime)
-        if not isDashing or not Character or not HumanoidRootPart or not HumanoidRootPart.Parent then
-            connection:Disconnect()
-            isDashing = false
-            return
-        end
-        
-        if isCharacterDisabled() then
-            connection:Disconnect()
-            isDashing = false
-            return
-        end
-        
-        local timeElapsed = tick() - lastDashTime
-        if timeElapsed > dashDuration then
-            connection:Disconnect()
-            isDashing = false
-            
-            -- Remove cham effect when dash ends
-            if chamEffect then
-                removeChamEffect(chamEffect)
-                chamEffect = nil
-            end
-            
-            if straightAnimationTrack and straightAnimationTrack.IsPlaying then
-                straightAnimationTrack:Stop()
-            end
-            return
-        end
-        
-        local distance = DASH_SPEED * deltaTime
-        traveledDistance = traveledDistance + distance
-        
-        if traveledDistance > MAX_DASH_DISTANCE then
-            connection:Disconnect()
-            isDashing = false
-            if chamEffect then
-                removeChamEffect(chamEffect)
-                chamEffect = nil
-            end
-            if straightAnimationTrack and straightAnimationTrack.IsPlaying then
-                straightAnimationTrack:Stop()
-            end
-            return
-        end
-        
-        local moveDirection = direction
-        
-        -- FIXED FOLLOWING: Only adjust direction slightly if opponent allows it
-        if targetCharacter and isDashFollowAllowed(targetCharacter) then
-            local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
-            if targetRoot and targetRoot.Parent and traveledDistance < MAX_DASH_DISTANCE * 0.6 then
-                local directionToTarget = (targetRoot.Position - HumanoidRootPart.Position).Unit
-                moveDirection = moveDirection:Lerp(directionToTarget, 0.15)
-            end
-        end
-        
-        local newPosition = HumanoidRootPart.Position + moveDirection * distance
-        HumanoidRootPart.CFrame = CFrame.new(newPosition, newPosition + moveDirection)
-        
-        TweenService:Create(blur, TweenInfo.new(0.05), {Size = 8}):Play()
-    end)
-    
-    task.delay(dashDuration + 0.2, function()
-        TweenService:Create(blur, TweenInfo.new(0.3), {Size = 0}):Play()
-    end)
+    -- CHAM FADE OUT
+    if targetCharacter and chammedTargets[targetCharacter] then
+        fadeChamOut(targetCharacter, 0.3)
+        chammedTargets[targetCharacter] = nil
+    end
 end
 
-local function performDash()
-    if isDashing or isCharacterDisabled() then return end
-    
-    -- Check cooldown
-    if (tick() - lastDashTime) < DASH_COOLDOWN then
-        return
-    end
-    
-    local targetCharacter, targetDistance = findNearestTarget(MAX_TARGET_RANGE)
-    local dashDirection
-    
-    if targetCharacter and targetDistance and targetDistance > MIN_TARGET_DISTANCE then
-        dashDirection = (targetCharacter.HumanoidRootPart.Position - HumanoidRootPart.Position).Unit
-        playSideAnimation(dashDirection.X > 0)
-    else
-        dashDirection = CurrentCamera.CFrame.LookVector
-    end
-    
-    executeDash(targetCharacter, dashDirection)
-end
+--// END SNIPPET 3 - DASH EXECUTION WITH FIXED FOLLOW + COOLDOWN
+--// SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS
 
--- Cooldown Display UI on bottom left
-local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SideDashAssistGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndex = 50
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local cooldownGui = Instance.new("ScreenGui")
-cooldownGui.Name = "CooldownNotifier"
-cooldownGui.ResetOnSpawn = false
-cooldownGui.Parent = playerGui
-
+-- COOLDOWN NOTIFIER (Bottom Left)
 local cooldownLabel = Instance.new("TextLabel")
 cooldownLabel.Name = "CooldownLabel"
-cooldownLabel.Size = UDim2.new(0, 150, 0, 40)
-cooldownLabel.Position = UDim2.new(0, 10, 1, -50)
-cooldownLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
+cooldownLabel.Position = UDim2.new(0, 10, 1, -60)
+cooldownLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 cooldownLabel.BackgroundTransparency = 0.3
 cooldownLabel.BorderSizePixel = 0
 cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-cooldownLabel.TextSize = 18
+cooldownLabel.TextSize = 16
 cooldownLabel.Font = Enum.Font.GothamBold
-cooldownLabel.Text = "Ready!"
-cooldownLabel.Parent = cooldownGui
+cooldownLabel.TextStrokeTransparency = 0.5
+cooldownLabel.Parent = ScreenGui
 
+local cornerCooldown = Instance.new("UICorner")
+cornerCooldown.CornerRadius = UDim.new(0, 8)
+cornerCooldown.Parent = cooldownLabel
+
+-- COOLDOWN LIVE UPDATE
 local cooldownConnection
-cooldownConnection = RunService.Heartbeat:Connect(function()
-    if not cooldownLabel or not cooldownLabel.Parent then
-        cooldownConnection:Disconnect()
-        return
-    end
+local function updateCooldown()
+    if cooldownConnection then cooldownConnection:Disconnect() end
     
-    local timeSinceLastDash = tick() - lastDashTime
-    local remainingCooldown = DASH_COOLDOWN - timeSinceLastDash
-    
-    if remainingCooldown <= 0 then
-        cooldownLabel.Text = "Ready!"
-        cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-    else
-        cooldownLabel.Text = string.format("%.1f", remainingCooldown)
-        if remainingCooldown > 1.2 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        elseif remainingCooldown > 0.5 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+    cooldownConnection = RunService.Heartbeat:Connect(function()
+        local timeSinceDash = tick() - lastDashTime
+        local remainingCooldown = DASH_COOLDOWN - timeSinceDash
+        
+        if remainingCooldown > 0 then
+            local displayTime = math.ceil(remainingCooldown * 10) / 10
+            cooldownLabel.Text = string.format("%.1f", displayTime) .. "s"
+            
+            if displayTime > 1.2 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0) -- RED
+            elseif displayTime > 0.5 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- YELLOW
+            else
+                cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- GREEN
+            end
         else
+            cooldownLabel.Text = "Ready!"
             cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
         end
-    end
-end)
+    end)
+end
 
--- SNIPPET 3 END --
---// SNIPPET 4 - UI WITH KEYBINDS BUTTON & SETTINGS PANEL
+updateCooldown()
 
--- Cleanup old frames
-pcall(function()
-    local pg = LocalPlayer:WaitForChild("PlayerGui")
-    local oldFrame = pg:FindFirstChild("SideDashMainFrame")
-    if oldFrame then oldFrame:Destroy() end
-end)
-
-task.wait(0.2)
-
--- Main Container
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SideDashMainFrame"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 280, 0, 200)
-mainFrame.Position = UDim2.new(1, -300, 1, -230)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BackgroundTransparency = 0
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
-
-local borderFrame = Instance.new("Frame")
-borderFrame.Name = "Border"
-borderFrame.Size = UDim2.new(1, 0, 1, 0)
-borderFrame.Position = UDim2.new(0, 0, 0, 0)
-borderFrame.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-borderFrame.BackgroundTransparency = 0
-borderFrame.BorderSizePixel = 0
-borderFrame.Parent = mainFrame
-borderFrame.ZIndex = 0
-
-local innerFrame = Instance.new("Frame")
-innerFrame.Name = "Inner"
-innerFrame.Size = UDim2.new(1, -4, 1, -4)
-innerFrame.Position = UDim2.new(0, 2, 0, 2)
-innerFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-innerFrame.BackgroundTransparency = 0
-innerFrame.BorderSizePixel = 0
-innerFrame.Parent = borderFrame
-innerFrame.ZIndex = 1
-
--- Title
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Name = "Title"
-titleLabel.Size = UDim2.new(1, 0, 0, 30)
-titleLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-titleLabel.BackgroundTransparency = 0
-titleLabel.BorderSizePixel = 0
-titleLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-titleLabel.TextSize = 16
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.Text = "⚡ Dash Assist"
-titleLabel.Parent = innerFrame
-titleLabel.ZIndex = 2
-
--- Separator
-local separator = Instance.new("Frame")
-separator.Name = "Separator"
-separator.Size = UDim2.new(1, 0, 0, 1)
-separator.Position = UDim2.new(0, 0, 0, 30)
-separator.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-separator.BackgroundTransparency = 0
-separator.BorderSizePixel = 0
-separator.Parent = innerFrame
-separator.ZIndex = 2
-
--- Info Label
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Name = "Info"
-infoLabel.Size = UDim2.new(1, -20, 0, 50)
-infoLabel.Position = UDim2.new(0, 10, 0, 40)
-infoLabel.BackgroundTransparency = 1
-infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoLabel.TextSize = 12
-infoLabel.Font = Enum.Font.Gotham
-infoLabel.TextWrapped = true
-infoLabel.Text = "Click the button to dash!\nUse Keybinds menu to change controls."
-infoLabel.Parent = innerFrame
-infoLabel.ZIndex = 2
-
--- Buttons Container
-local buttonsContainer = Instance.new("Frame")
-buttonsContainer.Name = "ButtonsContainer"
-buttonsContainer.Size = UDim2.new(1, -20, 0, 40)
-buttonsContainer.Position = UDim2.new(0, 10, 1, -50)
-buttonsContainer.BackgroundTransparency = 1
-buttonsContainer.BorderSizePixel = 0
-buttonsContainer.Parent = innerFrame
-buttonsContainer.ZIndex = 2
-
--- Settings Button
-local settingsButton = Instance.new("TextButton")
-settingsButton.Name = "SettingsBtn"
-settingsButton.Size = UDim2.new(0.5, -5, 1, 0)
-settingsButton.Position = UDim2.new(0, 0, 0, 0)
-settingsButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-settingsButton.BorderSizePixel = 0
-settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-settingsButton.TextSize = 14
-settingsButton.Font = Enum.Font.GothamBold
-settingsButton.Text = "⚙️ Settings"
-settingsButton.Parent = buttonsContainer
-settingsButton.ZIndex = 3
-
--- Keybinds Button (NEW)
-local keybindsButton = Instance.new("TextButton")
-keybindsButton.Name = "KeybindsBtn"
-keybindsButton.Size = UDim2.new(0.5, -5, 1, 0)
-keybindsButton.Position = UDim2.new(0.5, 5, 0, 0)
-keybindsButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-keybindsButton.BorderSizePixel = 0
-keybindsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-keybindsButton.TextSize = 14
-keybindsButton.Font = Enum.Font.GothamBold
-keybindsButton.Text = "🖱️ Keybinds"
-keybindsButton.Parent = buttonsContainer
-keybindsButton.ZIndex = 3
-
--- Dash Button
+-- MAIN BUTTON (DASH)
 local dashButton = Instance.new("TextButton")
-dashButton.Name = "DashBtn"
-dashButton.Size = UDim2.new(1, -20, 0, 50)
-dashButton.Position = UDim2.new(0, 10, 0, 100)
+dashButton.Name = "DashButton"
+dashButton.Size = UDim2.new(0, 60, 0, 60)
+dashButton.Position = UDim2.new(1, -80, 1, -80)
 dashButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-dashButton.BorderSizePixel = 0
 dashButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-dashButton.TextSize = 16
+dashButton.TextSize = 24
 dashButton.Font = Enum.Font.GothamBold
-dashButton.Text = "🔴 DASH"
-dashButton.Parent = innerFrame
-dashButton.ZIndex = 2
+dashButton.Text = "💨"
+dashButton.BorderSizePixel = 0
+dashButton.Parent = ScreenGui
 
-dashButton.MouseButton1Click:Connect(function()
-    performDash()
-end)
+local cornerDash = Instance.new("UICorner")
+cornerDash.CornerRadius = UDim.new(0, 10)
+cornerDash.Parent = dashButton
 
--- Keybinds Panel (NEW)
+-- SETTINGS BUTTON
+local settingsButton = Instance.new("TextButton")
+settingsButton.Name = "SettingsButton"
+settingsButton.Size = UDim2.new(0, 60, 0, 60)
+settingsButton.Position = UDim2.new(1, -150, 1, -80)
+settingsButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+settingsButton.TextSize = 24
+settingsButton.Font = Enum.Font.GothamBold
+settingsButton.Text = "⚙️"
+settingsButton.BorderSizePixel = 0
+settingsButton.Parent = ScreenGui
+
+local cornerSettings = Instance.new("UICorner")
+cornerSettings.CornerRadius = UDim.new(0, 10)
+cornerSettings.Parent = settingsButton
+
+-- KEYBINDS BUTTON (NEW)
+local keybindsButton = Instance.new("TextButton")
+keybindsButton.Name = "KeybindsButton"
+keybindsButton.Size = UDim2.new(0, 60, 0, 60)
+keybindsButton.Position = UDim2.new(1, -220, 1, -80)
+keybindsButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+keybindsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindsButton.TextSize = 24
+keybindsButton.Font = Enum.Font.GothamBold
+keybindsButton.Text = "🖱️"
+keybindsButton.BorderSizePixel = 0
+keybindsButton.Parent = ScreenGui
+
+local cornerKeybinds = Instance.new("UICorner")
+cornerKeybinds.CornerRadius = UDim.new(0, 10)
+cornerKeybinds.Parent = keybindsButton
+
+-- KEYBINDS PANEL (NEW)
 local keybindsPanel = Instance.new("Frame")
 keybindsPanel.Name = "KeybindsPanel"
 keybindsPanel.Size = UDim2.new(0, 350, 0, 300)
-keybindsPanel.Position = UDim2.new(0.5, -175, 0.5, -150)
-keybindsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-keybindsPanel.BackgroundTransparency = 1
+keybindsPanel.Position = UDim2.new(1, -400, 1, -360)
+keybindsPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 keybindsPanel.BorderSizePixel = 0
 keybindsPanel.Visible = false
-keybindsPanel.Parent = screenGui
-keybindsPanel.ZIndex = 10
+keybindsPanel.Parent = ScreenGui
 
-local keybindsBg = Instance.new("Frame")
-keybindsBg.Name = "Background"
-keybindsBg.Size = UDim2.new(1, 0, 1, 0)
-keybindsBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-keybindsBg.BorderColor3 = Color3.fromRGB(100, 200, 255)
-keybindsBg.BorderSizePixel = 2
-keybindsBg.Parent = keybindsPanel
-keybindsBg.ZIndex = 10
+local cornerPanel = Instance.new("UICorner")
+cornerPanel.CornerRadius = UDim.new(0, 12)
+cornerPanel.Parent = keybindsPanel
 
-local keybindsTitle = Instance.new("TextLabel")
-keybindsTitle.Name = "Title"
-keybindsTitle.Size = UDim2.new(1, 0, 0, 35)
-keybindsTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-keybindsTitle.BorderSizePixel = 0
-keybindsTitle.TextColor3 = Color3.fromRGB(100, 200, 255)
-keybindsTitle.TextSize = 16
-keybindsTitle.Font = Enum.Font.GothamBold
-keybindsTitle.Text = "🖱️ Keybinds Manager"
-keybindsTitle.Parent = keybindsBg
-keybindsTitle.ZIndex = 11
+local panelTitle = Instance.new("TextLabel")
+panelTitle.Name = "Title"
+panelTitle.Size = UDim2.new(1, 0, 0, 40)
+panelTitle.Position = UDim2.new(0, 0, 0, 0)
+panelTitle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+panelTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+panelTitle.TextSize = 18
+panelTitle.Font = Enum.Font.GothamBold
+panelTitle.Text = "Keybinds Settings"
+panelTitle.BorderSizePixel = 0
+panelTitle.Parent = keybindsPanel
 
-local keybindsContent = Instance.new("ScrollingFrame")
-keybindsContent.Name = "Content"
-keybindsContent.Size = UDim2.new(1, -10, 1, -80)
-keybindsContent.Position = UDim2.new(0, 5, 0, 40)
-keybindsContent.BackgroundTransparency = 1
-keybindsContent.ScrollBarThickness = 8
-keybindsContent.BorderSizePixel = 0
-keybindsContent.Parent = keybindsBg
-keybindsContent.ZIndex = 11
+local cornerPanelTitle = Instance.new("UICorner")
+cornerPanelTitle.CornerRadius = UDim.new(0, 10)
+cornerPanelTitle.Parent = panelTitle
 
--- Keybind entry for Dash
-local dashKeybindEntry = Instance.new("Frame")
-dashKeybindEntry.Name = "DashEntry"
-dashKeybindEntry.Size = UDim2.new(1, 0, 0, 50)
-dashKeybindEntry.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-dashKeybindEntry.BorderSizePixel = 0
-dashKeybindEntry.Parent = keybindsContent
-dashKeybindEntry.ZIndex = 11
+-- KEYBIND INPUT
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Name = "Label"
+keybindLabel.Size = UDim2.new(0, 100, 0, 30)
+keybindLabel.Position = UDim2.new(0, 15, 0, 50)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+keybindLabel.TextSize = 14
+keybindLabel.Font = Enum.Font.Gotham
+keybindLabel.Text = "Dash Key:"
+keybindLabel.Parent = keybindsPanel
 
-local dashLabel = Instance.new("TextLabel")
-dashLabel.Name = "Label"
-dashLabel.Size = UDim2.new(0.6, -5, 1, 0)
-dashLabel.Position = UDim2.new(0, 5, 0, 0)
-dashLabel.BackgroundTransparency = 1
-dashLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-dashLabel.TextSize = 14
-dashLabel.Font = Enum.Font.GothamBold
-dashLabel.Text = "Dash Key:"
-dashLabel.TextXAlignment = Enum.TextXAlignment.Left
-dashLabel.Parent = dashKeybindEntry
-dashLabel.ZIndex = 11
+local keybindInput = Instance.new("TextBox")
+keybindInput.Name = "Input"
+keybindInput.Size = UDim2.new(0, 120, 0, 30)
+keybindInput.Position = UDim2.new(0, 120, 0, 50)
+keybindInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+keybindInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindInput.TextSize = 14
+keybindInput.Font = Enum.Font.Gotham
+keybindInput.PlaceholderText = "E"
+keybindInput.Text = "E"
+keybindInput.BorderSizePixel = 1
+keybindInput.BorderColor3 = Color3.fromRGB(70, 130, 180)
+keybindInput.Parent = keybindsPanel
 
-local dashKeyInput = Instance.new("TextBox")
-dashKeyInput.Name = "Input"
-dashKeyInput.Size = UDim2.new(0.4, -10, 0, 30)
-dashKeyInput.Position = UDim2.new(0.6, 5, 0, 10)
-dashKeyInput.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-dashKeyInput.BorderColor3 = Color3.fromRGB(100, 200, 255)
-dashKeyInput.BorderSizePixel = 1
-dashKeyInput.TextColor3 = Color3.fromRGB(100, 200, 255)
-dashKeyInput.TextSize = 14
-dashKeyInput.Font = Enum.Font.Gotham
-dashKeyInput.Text = KEYBINDS.Dash
-dashKeyInput.Parent = dashKeybindEntry
-dashKeybindEntry.Size = UDim2.new(1, 0, 0, 60)
-keybindsContent.CanvasSize = UDim2.new(0, 0, 0, 60)
+local saveKeyButton = Instance.new("TextButton")
+saveKeyButton.Name = "SaveButton"
+saveKeyButton.Size = UDim2.new(0, 80, 0, 30)
+saveKeyButton.Position = UDim2.new(0, 250, 0, 50)
+saveKeyButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+saveKeyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+saveKeyButton.TextSize = 12
+saveKeyButton.Font = Enum.Font.GothamBold
+saveKeyButton.Text = "Save"
+saveKeyButton.BorderSizePixel = 0
+saveKeyButton.Parent = keybindsPanel
 
--- Update keybind when input changes
-dashKeyInput.FocusLost:Connect(function(enterPressed)
-    if enterPressed and dashKeyInput.Text ~= "" then
-        KEYBINDS.Dash = dashKeyInput.Text:upper()
-        savekeybinds()
-        notify("Keybind Changed", "Dash key set to: " .. KEYBINDS.Dash)
+local cornerSaveBtn = Instance.new("UICorner")
+cornerSaveBtn.CornerRadius = UDim.new(0, 6)
+cornerSaveBtn.Parent = saveKeyButton
+
+-- CURRENT KEYBIND INFO
+local currentKeybindInfo = Instance.new("TextLabel")
+currentKeybindInfo.Name = "CurrentKeybindInfo"
+currentKeybindInfo.Size = UDim2.new(1, -30, 0, 100)
+currentKeybindInfo.Position = UDim2.new(0, 15, 0, 100)
+currentKeybindInfo.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+currentKeybindInfo.TextColor3 = Color3.fromRGB(150, 200, 255)
+currentKeybindInfo.TextSize = 12
+currentKeybindInfo.Font = Enum.Font.Gotham
+currentKeybindInfo.TextWrapped = true
+currentKeybindInfo.TextXAlignment = Enum.TextXAlignment.Left
+currentKeybindInfo.Text = "Current Dash Key: E\n\nPress 'Save' to apply new keybind."
+currentKeybindInfo.BorderSizePixel = 0
+currentKeybindInfo.Parent = keybindsPanel
+
+local cornerInfoBox = Instance.new("UICorner")
+cornerInfoBox.CornerRadius = UDim.new(0, 6)
+cornerInfoBox.Parent = currentKeybindInfo
+
+-- KEYBIND SYSTEM
+local CURRENT_DASH_KEY = "E"
+
+local function isValidKeybind(keyName)
+    if #keyName < 1 or #keyName > 3 then return false end
+    local validKeys = {
+        A=true, B=true, C=true, D=true, E=true, F=true, G=true, H=true, I=true, J=true, 
+        K=true, L=true, M=true, N=true, O=true, P=true, Q=true, R=true, S=true, T=true,
+        U=true, V=true, W=true, X=true, Y=true, Z=true,
+        Zero=true, One=true, Two=true, Three=true, Four=true, Five=true, Six=true, Seven=true, Eight=true, Nine=true,
+        F1=true, F2=true, F3=true, F4=true, F5=true, F6=true, F7=true, F8=true, F9=true, F10=true, F11=true, F12=true,
+        Space=true, Tab=true, Backspace=true, Return=true, Escape=true, Shift=true, Ctrl=true, Alt=true,
+        LeftShift=true, RightShift=true, LeftCtrl=true, RightCtrl=true, LeftAlt=true, RightAlt=true
+    }
+    return validKeys[keyName] ~= nil
+end
+
+saveKeyButton.MouseButton1Click:Connect(function()
+    local newKey = keybindInput.Text:upper()
+    if isValidKeybind(newKey) then
+        CURRENT_DASH_KEY = newKey
+        currentKeybindInfo.Text = "Current Dash Key: " .. CURRENT_DASH_KEY .. "\n\n✓ Keybind updated successfully!"
+        currentKeybindInfo.TextColor3 = Color3.fromRGB(0, 255, 100)
+        notify("Keybind Changed", "Dash key set to: " .. CURRENT_DASH_KEY)
+        task.wait(2)
+        currentKeybindInfo.TextColor3 = Color3.fromRGB(150, 200, 255)
+        currentKeybindInfo.Text = "Current Dash Key: " .. CURRENT_DASH_KEY .. "\n\nPress 'Save' to apply new keybind."
     else
-        dashKeyInput.Text = KEYBINDS.Dash
+        currentKeybindInfo.Text = "Current Dash Key: " .. CURRENT_DASH_KEY .. "\n\n❌ Invalid keybind! Use letters or F-keys."
+        currentKeybindInfo.TextColor3 = Color3.fromRGB(255, 100, 100)
+        task.wait(2)
+        currentKeybindInfo.TextColor3 = Color3.fromRGB(150, 200, 255)
+        currentKeybindInfo.Text = "Current Dash Key: " .. CURRENT_DASH_KEY .. "\n\nPress 'Save' to apply new keybind."
     end
 end)
 
--- Close button for keybinds
-local closeKeybindsBtn = Instance.new("TextButton")
-closeKeybindsBtn.Name = "CloseBtn"
-closeKeybindsBtn.Size = UDim2.new(1, 0, 0, 35)
-closeKeybindsBtn.Position = UDim2.new(0, 0, 1, -35)
-closeKeybindsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-closeKeybindsBtn.BorderSizePixel = 0
-closeKeybindsBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-closeKeybindsBtn.TextSize = 14
-closeKeybindsBtn.Font = Enum.Font.GothamBold
-closeKeybindsBtn.Text = "Close"
-closeKeybindsBtn.Parent = keybindsBg
-closeKeybindsBtn.ZIndex = 11
-
-closeKeybindsBtn.MouseButton1Click:Connect(function()
-    keybindsPanel.Visible = false
-end)
-
+-- TOGGLE KEYBINDS PANEL
 keybindsButton.MouseButton1Click:Connect(function()
     keybindsPanel.Visible = not keybindsPanel.Visible
 end)
 
--- Input handling for keybinds
-InputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    if input.KeyCode == Enum.KeyCode[KEYBINDS.Dash] or input.KeyCode.Name == KEYBINDS.Dash then
-        performDash()
-    end
+-- DASH BUTTON CLICK
+dashButton.MouseButton1Click:Connect(function()
+    local target = findNearestTarget(MAX_TARGET_RANGE)
+    performDash(target, 49)
 end)
 
--- SNIPPET 4 END --
---// SNIPPET 5 - SETTINGS PANEL & FINAL CLEANUP
+--// END SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS
+--// SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION
 
--- Settings Panel
+-- SETTINGS PANEL (from original)
 local settingsPanel = Instance.new("Frame")
 settingsPanel.Name = "SettingsPanel"
-settingsPanel.Size = UDim2.new(0, 400, 0, 350)
-settingsPanel.Position = UDim2.new(0.5, -200, 0.5, -175)
-settingsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-settingsPanel.BackgroundTransparency = 1
+settingsPanel.Size = UDim2.new(0, 350, 0, 400)
+settingsPanel.Position = UDim2.new(1, -400, 1, -460)
+settingsPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 settingsPanel.BorderSizePixel = 0
 settingsPanel.Visible = false
-settingsPanel.Parent = screenGui
-settingsPanel.ZIndex = 10
+settingsPanel.Parent = ScreenGui
 
-local settingsBg = Instance.new("Frame")
-settingsBg.Name = "Background"
-settingsBg.Size = UDim2.new(1, 0, 1, 0)
-settingsBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-settingsBg.BorderColor3 = Color3.fromRGB(255, 150, 100)
-settingsBg.BorderSizePixel = 2
-settingsBg.Parent = settingsPanel
-settingsBg.ZIndex = 10
+local cornerSettingsPanel = Instance.new("UICorner")
+cornerSettingsPanel.CornerRadius = UDim.new(0, 12)
+cornerSettingsPanel.Parent = settingsPanel
 
-local settingsTitle = Instance.new("TextLabel")
-settingsTitle.Name = "Title"
-settingsTitle.Size = UDim2.new(1, 0, 0, 40)
-settingsTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-settingsTitle.BorderSizePixel = 0
-settingsTitle.TextColor3 = Color3.fromRGB(255, 150, 100)
-settingsTitle.TextSize = 16
-settingsTitle.Font = Enum.Font.GothamBold
-settingsTitle.Text = "⚙️ Settings"
-settingsTitle.Parent = settingsBg
-settingsTitle.ZIndex = 11
+local settingsPanelTitle = Instance.new("TextLabel")
+settingsPanelTitle.Name = "Title"
+settingsPanelTitle.Size = UDim2.new(1, 0, 0, 40)
+settingsPanelTitle.Position = UDim2.new(0, 0, 0, 0)
+settingsPanelTitle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+settingsPanelTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+settingsPanelTitle.TextSize = 18
+settingsPanelTitle.Font = Enum.Font.GothamBold
+settingsPanelTitle.Text = "Dash Settings"
+settingsPanelTitle.BorderSizePixel = 0
+settingsPanelTitle.Parent = settingsPanel
 
--- Speed Slider Label
+local cornerSettingsPanelTitle = Instance.new("UICorner")
+cornerSettingsPanelTitle.CornerRadius = UDim.new(0, 10)
+cornerSettingsPanelTitle.Parent = settingsPanelTitle
+
+-- SPEED SLIDER
 local speedLabel = Instance.new("TextLabel")
 speedLabel.Name = "SpeedLabel"
-speedLabel.Size = UDim2.new(1, -20, 0, 25)
-speedLabel.Position = UDim2.new(0, 10, 0, 50)
+speedLabel.Size = UDim2.new(0, 100, 0, 25)
+speedLabel.Position = UDim2.new(0, 15, 0, 55)
 speedLabel.BackgroundTransparency = 1
 speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 speedLabel.TextSize = 13
-speedLabel.Font = Enum.Font.GothamBold
-speedLabel.Text = "Dash Speed: 49/100"
-speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-speedLabel.Parent = settingsBg
-speedLabel.ZIndex = 11
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.Text = "Dash Speed:"
+speedLabel.Parent = settingsPanel
 
-local speedSlider = Instance.new("TextButton")
+local speedSlider = Instance.new("Frame")
 speedSlider.Name = "SpeedSlider"
-speedSlider.Size = UDim2.new(1, -20, 0, 12)
-speedSlider.Position = UDim2.new(0, 10, 0, 80)
-speedSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-speedSlider.BorderColor3 = Color3.fromRGB(255, 150, 100)
-speedSlider.BorderSizePixel = 1
-speedSlider.Text = ""
-speedSlider.Parent = settingsBg
-speedSlider.ZIndex = 11
+speedSlider.Size = UDim2.new(0, 250, 0, 10)
+speedSlider.Position = UDim2.new(0, 15, 0, 85)
+speedSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+speedSlider.BorderSizePixel = 0
+speedSlider.Parent = settingsPanel
 
-local speedFill = Instance.new("Frame")
-speedFill.Name = "Fill"
-speedFill.Size = UDim2.new(0.49, 0, 1, 0)
-speedFill.BackgroundColor3 = Color3.fromRGB(255, 150, 100)
-speedFill.BorderSizePixel = 0
-speedFill.Parent = speedSlider
-speedFill.ZIndex = 11
+local cornerSpeedSlider = Instance.new("UICorner")
+cornerSpeedSlider.CornerRadius = UDim.new(0, 5)
+cornerSpeedSlider.Parent = speedSlider
 
--- Range Slider Label
-local rangeLabel = Instance.new("TextLabel")
-rangeLabel.Name = "RangeLabel"
-rangeLabel.Size = UDim2.new(1, -20, 0, 25)
-rangeLabel.Position = UDim2.new(0, 10, 0, 120)
-rangeLabel.BackgroundTransparency = 1
-rangeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-rangeLabel.TextSize = 13
-rangeLabel.Font = Enum.Font.GothamBold
-rangeLabel.Text = "Target Range: 40 studs"
-rangeLabel.TextXAlignment = Enum.TextXAlignment.Left
-rangeLabel.Parent = settingsBg
-rangeLabel.ZIndex = 11
+local speedSliderFill = Instance.new("Frame")
+speedSliderFill.Name = "Fill"
+speedSliderFill.Size = UDim2.new(0.49, 0, 1, 0)
+speedSliderFill.Position = UDim2.new(0, 0, 0, 0)
+speedSliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+speedSliderFill.BorderSizePixel = 0
+speedSliderFill.Parent = speedSlider
 
-local rangeSlider = Instance.new("TextButton")
-rangeSlider.Name = "RangeSlider"
-rangeSlider.Size = UDim2.new(1, -20, 0, 12)
-rangeSlider.Position = UDim2.new(0, 10, 0, 150)
-rangeSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-rangeSlider.BorderColor3 = Color3.fromRGB(255, 150, 100)
-rangeSlider.BorderSizePixel = 1
-rangeSlider.Text = ""
-rangeSlider.Parent = settingsBg
-rangeSlider.ZIndex = 11
+local cornerSpeedSliderFill = Instance.new("UICorner")
+cornerSpeedSliderFill.CornerRadius = UDim.new(0, 5)
+cornerSpeedSliderFill.Parent = speedSliderFill
 
-local rangeFill = Instance.new("Frame")
-rangeFill.Name = "Fill"
-rangeFill.Size = UDim2.new(1, 0, 1, 0)
-rangeFill.BackgroundColor3 = Color3.fromRGB(255, 150, 100)
-rangeFill.BorderSizePixel = 0
-rangeFill.Parent = rangeSlider
-rangeFill.ZIndex = 11
+local speedSliderValue = Instance.new("TextLabel")
+speedSliderValue.Name = "Value"
+speedSliderValue.Size = UDim2.new(0, 60, 0, 20)
+speedSliderValue.Position = UDim2.new(0, 270, 0, 75)
+speedSliderValue.BackgroundTransparency = 1
+speedSliderValue.TextColor3 = Color3.fromRGB(100, 150, 255)
+speedSliderValue.TextSize = 12
+speedSliderValue.Font = Enum.Font.GothamBold
+speedSliderValue.Text = "49"
+speedSliderValue.Parent = settingsPanel
 
--- Info Text
-local infoText = Instance.new("TextLabel")
-infoText.Name = "Info"
-infoText.Size = UDim2.new(1, -20, 0, 80)
-infoText.Position = UDim2.new(0, 10, 0, 180)
-infoText.BackgroundTransparency = 1
-infoText.TextColor3 = Color3.fromRGB(150, 150, 150)
-infoText.TextSize = 11
-infoText.Font = Enum.Font.Gotham
-infoText.TextWrapped = true
-infoText.TextYAlignment = Enum.TextYAlignment.Top
-infoText.Text = "• Dash Cooldown: 2 seconds\n• Max Dash Distance: 60 studs\n• Press your keybind to dash\n• Cham effect shows on targets"
-infoText.Parent = settingsBg
-infoText.ZIndex = 11
+local speedSliderCurrentValue = 49
 
--- Close button
-local closeSettingsBtn = Instance.new("TextButton")
-closeSettingsBtn.Name = "CloseBtn"
-closeSettingsBtn.Size = UDim2.new(1, 0, 0, 40)
-closeSettingsBtn.Position = UDim2.new(0, 0, 1, -40)
-closeSettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-closeSettingsBtn.BorderSizePixel = 0
-closeSettingsBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-closeSettingsBtn.TextSize = 14
-closeSettingsBtn.Font = Enum.Font.GothamBold
-closeSettingsBtn.Text = "Close"
-closeSettingsBtn.Parent = settingsBg
-closeSettingsBtn.ZIndex = 11
-
-closeSettingsBtn.MouseButton1Click:Connect(function()
-    settingsPanel.Visible = false
-end)
-
-settingsButton.MouseButton1Click:Connect(function()
-    settingsPanel.Visible = not settingsPanel.Visible
-end)
-
--- Slider interactions
-local mouse = LocalPlayer:GetMouse()
-
-local function updateSlider(slider, fill, value, maxValue, label, labelPrefix)
-    local fillPercent = math.clamp(value / maxValue, 0, 1)
-    fill.Size = UDim2.new(fillPercent, 0, 1, 0)
-    label.Text = labelPrefix .. ": " .. tostring(math.floor(value)) .. (labelPrefix:find("Range") and " studs" or "/100")
+local function updateSpeedSlider(value)
+    speedSliderCurrentValue = math.clamp(value, 0, 100)
+    speedSliderFill.Size = UDim2.new(speedSliderCurrentValue / 100, 0, 1, 0)
+    speedSliderValue.Text = tostring(math.floor(speedSliderCurrentValue))
 end
 
-local draggingSpeed = false
-speedSlider.MouseButton1Down:Connect(function()
-    draggingSpeed = true
-    
-    local moveConnection
-    moveConnection = mouse.Move:Connect(function()
-        if not draggingSpeed then moveConnection:Disconnect() return end
-        
-        local relativeX = math.clamp(mouse.X - speedSlider.AbsolutePosition.X, 0, speedSlider.AbsoluteSize.X)
-        local value = math.floor((relativeX / speedSlider.AbsoluteSize.X) * 100)
-        updateSlider(speedSlider, speedFill, value, 100, speedLabel, "Dash Speed")
-    end)
-end)
-
-InputService.InputEnded:Connect(function(input, gameProcessed)
+speedSlider.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        draggingSpeed = false
+        local mousePos = InputService:GetMouseLocation()
+        local relativeX = mousePos.X - speedSlider.AbsolutePosition.X
+        local percentage = math.clamp(relativeX / speedSlider.AbsoluteSize.X, 0, 1)
+        updateSpeedSlider(percentage * 100)
     end
 end)
 
--- Cleanup and final notification
-
--- Prevent character breaking on rejoin
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    task.wait(0.5)
-    if chamEffect and chamEffect.Parent then
-        pcall(function() chamEffect:Destroy() end)
-        chamEffect = nil
+InputService.InputChanged:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if speedSlider:IsDescendantOf(game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")) then
+            local mousePos = InputService:GetMouseLocation()
+            if mousePos.X >= speedSlider.AbsolutePosition.X and mousePos.X <= speedSlider.AbsolutePosition.X + speedSlider.AbsoluteSize.X then
+                if mousePos.Y >= speedSlider.AbsolutePosition.Y and mousePos.Y <= speedSlider.AbsolutePosition.Y + speedSlider.AbsoluteSize.Y then
+                    local relativeX = mousePos.X - speedSlider.AbsolutePosition.X
+                    local percentage = math.clamp(relativeX / speedSlider.AbsoluteSize.X, 0, 1)
+                    updateSpeedSlider(percentage * 100)
+                end
+            end
+        end
     end
 end)
 
-print("sub to waspire :)")
+-- TOGGLE SETTINGS PANEL
+settingsButton.MouseButton1Click:Connect(function()
+    settingsPanel.Visible = not settingsPanel.Visible
+    if keybindsPanel.Visible then
+        keybindsPanel.Visible = false
+    end
+end)
+
+keybindsButton.MouseButton1Click:Connect(function()
+    keybindsPanel.Visible = not keybindsPanel.Visible
+    if settingsPanel.Visible then
+        settingsPanel.Visible = false
+    end
+end)
+
+-- INPUT HANDLING (Keybind + Button Detection)
+InputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- DYNAMIC KEYBIND DETECTION
+    local inputName = input.Name:upper()
+    
+    if inputName == CURRENT_DASH_KEY or inputName == CURRENT_DASH_KEY:upper() then
+        local target = findNearestTarget(MAX_TARGET_RANGE)
+        performDash(target, speedSliderCurrentValue)
+    end
+end)
+
+-- CLEANUP ON LEAVE
+LocalPlayer.CharacterAdded:Connect(function()
+    if cooldownConnection then
+        cooldownConnection:Disconnect()
+        cooldownConnection = nil
+    end
+end)
+
+-- Handle old versions cleanup
+game:GetService("Debris"):AddItem(ScreenGui, math.huge)
+
+notify("Side Dash Assist v2.0", "All features loaded ✅")
+
+--// END SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION
