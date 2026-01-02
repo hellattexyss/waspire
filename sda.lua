@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED)
+--// SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED V2)
 
 -- Cleanup old GUIs
 pcall(function()
@@ -82,6 +82,10 @@ local autoRotateConnection = nil
 -- CHAMS FOR OPPONENT
 local chammedTargets = {}
 
+-- KEYBIND STATE
+local CURRENT_DASH_KEY = "E"
+local speedSliderCurrentValue = 49
+
 -- Dash SFX (non-button)
 local dashSound = Instance.new("Sound")
 dashSound.Name = "DashSFX"
@@ -162,7 +166,7 @@ end
 
 notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
 
---// END SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED)
+--// END SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED V2)
 --// SNIPPET 2 - DASH LOGIC + OPPONENT CHAMS + FIXED FOLLOW BUG
 
 -- Anim + targeting (FIXED: Better error handling)
@@ -428,7 +432,7 @@ local function performDash(targetCharacter, speedSliderValue)
 end
 
 --// END SNIPPET 3 - DASH EXECUTION WITH FIXED FOLLOW + COOLDOWN
---// SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS
+--// SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS (FIXED)
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SideDashAssistGUI"
@@ -436,8 +440,15 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndex = 50
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- COOLDOWN NOTIFIER (Bottom Left)
+-- CREATE ALL PANELS FIRST (FIX: Avoid reference errors)
 local cooldownLabel = Instance.new("TextLabel")
+local dashButton = Instance.new("TextButton")
+local settingsButton = Instance.new("TextButton")
+local keybindsButton = Instance.new("TextButton")
+local keybindsPanel = Instance.new("Frame")
+local settingsPanel = Instance.new("Frame")
+
+-- COOLDOWN NOTIFIER (Bottom Left)
 cooldownLabel.Name = "CooldownLabel"
 cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
 cooldownLabel.Position = UDim2.new(0, 10, 1, -60)
@@ -486,7 +497,6 @@ end
 updateCooldown()
 
 -- MAIN BUTTON (DASH)
-local dashButton = Instance.new("TextButton")
 dashButton.Name = "DashButton"
 dashButton.Size = UDim2.new(0, 60, 0, 60)
 dashButton.Position = UDim2.new(1, -80, 1, -80)
@@ -503,7 +513,6 @@ cornerDash.CornerRadius = UDim.new(0, 10)
 cornerDash.Parent = dashButton
 
 -- SETTINGS BUTTON
-local settingsButton = Instance.new("TextButton")
 settingsButton.Name = "SettingsButton"
 settingsButton.Size = UDim2.new(0, 60, 0, 60)
 settingsButton.Position = UDim2.new(1, -150, 1, -80)
@@ -519,8 +528,7 @@ local cornerSettings = Instance.new("UICorner")
 cornerSettings.CornerRadius = UDim.new(0, 10)
 cornerSettings.Parent = settingsButton
 
--- KEYBINDS BUTTON (NEW)
-local keybindsButton = Instance.new("TextButton")
+-- KEYBINDS BUTTON
 keybindsButton.Name = "KeybindsButton"
 keybindsButton.Size = UDim2.new(0, 60, 0, 60)
 keybindsButton.Position = UDim2.new(1, -220, 1, -80)
@@ -536,8 +544,7 @@ local cornerKeybinds = Instance.new("UICorner")
 cornerKeybinds.CornerRadius = UDim.new(0, 10)
 cornerKeybinds.Parent = keybindsButton
 
--- KEYBINDS PANEL (NEW)
-local keybindsPanel = Instance.new("Frame")
+-- KEYBINDS PANEL
 keybindsPanel.Name = "KeybindsPanel"
 keybindsPanel.Size = UDim2.new(0, 350, 0, 300)
 keybindsPanel.Position = UDim2.new(1, -400, 1, -360)
@@ -627,9 +634,7 @@ local cornerInfoBox = Instance.new("UICorner")
 cornerInfoBox.CornerRadius = UDim.new(0, 6)
 cornerInfoBox.Parent = currentKeybindInfo
 
--- KEYBIND SYSTEM
-local CURRENT_DASH_KEY = "E"
-
+-- KEYBIND VALIDATION FUNCTION
 local function isValidKeybind(keyName)
     if #keyName < 1 or #keyName > 3 then return false end
     local validKeys = {
@@ -644,6 +649,7 @@ local function isValidKeybind(keyName)
     return validKeys[keyName] ~= nil
 end
 
+-- SAVE KEYBIND HANDLER
 saveKeyButton.MouseButton1Click:Connect(function()
     local newKey = keybindInput.Text:upper()
     if isValidKeybind(newKey) then
@@ -663,25 +669,16 @@ saveKeyButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- TOGGLE KEYBINDS PANEL
-keybindsButton.MouseButton1Click:Connect(function()
-    keybindsPanel.Visible = not keybindsPanel.Visible
-    if settingsPanel and settingsPanel.Visible then
-        settingsPanel.Visible = false
-    end
-end)
-
 -- DASH BUTTON CLICK
 dashButton.MouseButton1Click:Connect(function()
     local target = findNearestTarget(MAX_TARGET_RANGE)
-    performDash(target, 49)
+    performDash(target, speedSliderCurrentValue)
 end)
 
---// END SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS
+--// END SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS (FIXED)
 --// SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION (FIXED)
 
--- SETTINGS PANEL (from original)
-local settingsPanel = Instance.new("Frame")
+-- SETTINGS PANEL
 settingsPanel.Name = "SettingsPanel"
 settingsPanel.Size = UDim2.new(0, 350, 0, 400)
 settingsPanel.Position = UDim2.new(1, -400, 1, -460)
@@ -757,8 +754,6 @@ speedSliderValue.Font = Enum.Font.GothamBold
 speedSliderValue.Text = "49"
 speedSliderValue.Parent = settingsPanel
 
-local speedSliderCurrentValue = 49
-
 local function updateSpeedSlider(value)
     speedSliderCurrentValue = math.clamp(value, 0, 100)
     speedSliderFill.Size = UDim2.new(speedSliderCurrentValue / 100, 0, 1, 0)
@@ -791,7 +786,7 @@ InputService.InputChanged:Connect(function(input, gameProcessed)
     end
 end)
 
--- TOGGLE SETTINGS PANEL
+-- TOGGLE PANEL BUTTONS
 settingsButton.MouseButton1Click:Connect(function()
     settingsPanel.Visible = not settingsPanel.Visible
     if keybindsPanel.Visible then
@@ -806,13 +801,11 @@ keybindsButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- INPUT HANDLING (Keybind + Button Detection)
+-- INPUT HANDLING (Keybind Detection)
 InputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
-    -- DYNAMIC KEYBIND DETECTION
     local inputName = input.Name:upper()
-    
     if inputName == CURRENT_DASH_KEY or inputName == CURRENT_DASH_KEY:upper() then
         local target = findNearestTarget(MAX_TARGET_RANGE)
         performDash(target, speedSliderCurrentValue)
@@ -829,6 +822,6 @@ end)
 game:GetService("Debris"):AddItem(ScreenGui, math.huge)
 
 task.wait(0.5)
-notify("Side Dash Assist v2.0", "subscribe to waspire :)")
+notify("Welcome to the GNG", "sub to waspire :D")
 
 --// END SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION (FIXED)
