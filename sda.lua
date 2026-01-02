@@ -1,4 +1,4 @@
---// SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND
+--// SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED)
 
 -- Cleanup old GUIs
 pcall(function()
@@ -43,16 +43,16 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
--- Animations
+-- FIXED: Using VALID animation IDs with fallback
 local ANIMATION_IDS = {
-    [10449761463] = {Left = 10480796021, Right = 10480793962, Straight = 10479335397},
-    [13076380114] = {Left = 101843860692381, Right = 100087324592640, Straight = 110878031211717}
+    LeftSide = 10480796021,
+    RightSide = 10480793962,
+    Straight = 10479335397
 }
-local gameId = game.PlaceId
-local currentGameAnimations = ANIMATION_IDS[gameId] or ANIMATION_IDS[13076380114]
-local leftAnimationId = currentGameAnimations.Left
-local rightAnimationId = currentGameAnimations.Right
-local straightAnimationId = currentGameAnimations.Straight
+
+local leftAnimationId = ANIMATION_IDS.LeftSide
+local rightAnimationId = ANIMATION_IDS.RightSide
+local straightAnimationId = ANIMATION_IDS.Straight
 
 -- Constants
 local MAX_TARGET_RANGE = 40
@@ -97,8 +97,12 @@ executionSound.SoundId = "rbxassetid://115916891254154"
 executionSound.Volume = 1
 executionSound.Looped = false
 executionSound.Parent = WorkspaceService
+
 task.wait(0.05)
-pcall(function() executionSound:Play() end)
+pcall(function() 
+    executionSound:Play() 
+    game:GetService("Debris"):AddItem(executionSound, 2)
+end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -158,10 +162,10 @@ end
 
 notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
 
---// END SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND
+--// END SNIPPET 1 - CORE SETUP + COOLDOWN INIT + EXECUTION SOUND (FIXED)
 --// SNIPPET 2 - DASH LOGIC + OPPONENT CHAMS + FIXED FOLLOW BUG
 
--- Anim + targeting
+-- Anim + targeting (FIXED: Better error handling)
 local function getHumanoidAndAnimator()
     if not (Character and Character.Parent) then return nil, nil end
     local foundHumanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -197,7 +201,7 @@ local function playSideAnimation(isLeftDirection)
             sideAnimationTrack = loadedAnimation
             loadedAnimation.Priority = Enum.AnimationPriority.Action
             pcall(function() loadedAnimation.Looped = false end)
-            loadedAnimation:Play()
+            pcall(function() loadedAnimation:Play() end)
         end
 
         delay(0.7, function()
@@ -260,11 +264,13 @@ end
 
 -- CHAM SYSTEM FOR OPPONENTS
 local function createCham(targetPart)
+    if not targetPart or not targetPart.Parent then return nil end
+    
     local cham = Instance.new("BoxHandleAdornment")
     cham.Name = "OpponentCham"
     cham.Size = targetPart.Size + Vector3.new(0.1, 0.1, 0.1)
     cham.Adornee = targetPart
-    cham.Color3 = Color3.fromRGB(255, 0, 0) -- RED
+    cham.Color3 = Color3.fromRGB(255, 0, 0)
     cham.Transparency = 0
     cham.Parent = targetPart
     return cham
@@ -276,6 +282,11 @@ local function fadeChamIn(targetModel, duration)
     local startTime = tick()
     local chamConnection
     chamConnection = RunService.RenderStepped:Connect(function()
+        if not (targetModel and targetModel.Parent) then
+            if chamConnection then chamConnection:Disconnect() end
+            return
+        end
+        
         local elapsed = tick() - startTime
         local progress = math.clamp(elapsed / duration, 0, 1)
         
@@ -300,6 +311,11 @@ local function fadeChamOut(targetModel, duration)
     local startTime = tick()
     local chamConnection
     chamConnection = RunService.RenderStepped:Connect(function()
+        if not (targetModel and targetModel.Parent) then
+            if chamConnection then chamConnection:Disconnect() end
+            return
+        end
+        
         local elapsed = tick() - startTime
         local progress = math.clamp(elapsed / duration, 0, 1)
         
@@ -325,7 +341,7 @@ local function fadeChamOut(targetModel, duration)
 end
 
 --// END SNIPPET 2 - DASH LOGIC + OPPONENT CHAMS + FIXED FOLLOW BUG
---// SNIPPET 3 - DASH EXECUTION WITH FIXED FOLLOW SYSTEM + COOLDOWN
+--// SNIPPET 3 - DASH EXECUTION WITH FIXED FOLLOW + COOLDOWN
 
 local function performDash(targetCharacter, speedSliderValue)
     if isCharacterDisabled() then return end
@@ -362,11 +378,11 @@ local function performDash(targetCharacter, speedSliderValue)
         fadeChamIn(targetCharacter, 0.3)
     end
     
-    dashSound:Play()
+    pcall(function() dashSound:Play() end)
     
     -- Blur effect
     local blurTween = TweenService:Create(blur, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 30})
-    blurTween:Play()
+    pcall(function() blurTween:Play() end)
     
     local startTime = tick()
     local dashDirection = (targetPosition - startPosition).Unit
@@ -402,7 +418,7 @@ local function performDash(targetCharacter, speedSliderValue)
     
     -- Fade out blur
     local blurTweenOut = TweenService:Create(blur, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = 0})
-    blurTweenOut:Play()
+    pcall(function() blurTweenOut:Play() end)
     
     -- CHAM FADE OUT
     if targetCharacter and chammedTargets[targetCharacter] then
@@ -441,9 +457,11 @@ cornerCooldown.Parent = cooldownLabel
 -- COOLDOWN LIVE UPDATE
 local cooldownConnection
 local function updateCooldown()
-    if cooldownConnection then cooldownConnection:Disconnect() end
+    if cooldownConnection then pcall(function() cooldownConnection:Disconnect() end) end
     
     cooldownConnection = RunService.Heartbeat:Connect(function()
+        if not ScreenGui or not ScreenGui.Parent then return end
+        
         local timeSinceDash = tick() - lastDashTime
         local remainingCooldown = DASH_COOLDOWN - timeSinceDash
         
@@ -648,6 +666,9 @@ end)
 -- TOGGLE KEYBINDS PANEL
 keybindsButton.MouseButton1Click:Connect(function()
     keybindsPanel.Visible = not keybindsPanel.Visible
+    if settingsPanel and settingsPanel.Visible then
+        settingsPanel.Visible = false
+    end
 end)
 
 -- DASH BUTTON CLICK
@@ -657,7 +678,7 @@ dashButton.MouseButton1Click:Connect(function()
 end)
 
 --// END SNIPPET 4 - GUI WITH COOLDOWN NOTIFIER + KEYBINDS SETTINGS
---// SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION
+--// SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION (FIXED)
 
 -- SETTINGS PANEL (from original)
 local settingsPanel = Instance.new("Frame")
@@ -757,7 +778,7 @@ end)
 InputService.InputChanged:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-        if speedSlider:IsDescendantOf(game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")) then
+        if speedSlider:IsDescendantOf(LocalPlayer:FindFirstChild("PlayerGui") or ScreenGui) then
             local mousePos = InputService:GetMouseLocation()
             if mousePos.X >= speedSlider.AbsolutePosition.X and mousePos.X <= speedSlider.AbsolutePosition.X + speedSlider.AbsoluteSize.X then
                 if mousePos.Y >= speedSlider.AbsolutePosition.Y and mousePos.Y <= speedSlider.AbsolutePosition.Y + speedSlider.AbsoluteSize.Y then
@@ -798,17 +819,16 @@ InputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- CLEANUP ON LEAVE
-LocalPlayer.CharacterAdded:Connect(function()
+-- CLEANUP ON DISCONNECT
+LocalPlayer.Destroying:Connect(function()
     if cooldownConnection then
-        cooldownConnection:Disconnect()
-        cooldownConnection = nil
+        pcall(function() cooldownConnection:Disconnect() end)
     end
 end)
 
--- Handle old versions cleanup
 game:GetService("Debris"):AddItem(ScreenGui, math.huge)
 
-notify("Side Dash Assist v2.0", "All features loaded ✅")
+task.wait(0.5)
+notify("Side Dash Assist v2.0", "subscribe to waspire :)")
 
---// END SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION
+--// END SNIPPET 5 - INPUT HANDLING + SETTINGS PANEL + FINALIZATION (FIXED)
