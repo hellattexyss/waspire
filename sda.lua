@@ -1,10 +1,12 @@
---// SNIPPET 1 - CORE SETUP + COOLDOWN + NOTIFIER + EXEC SOUND
+--// SNIPPET 1 - CORE SETUP (ORIGINAL + COOLDOWN + EXEC SOUND)
 
 -- Cleanup old GUIs
 pcall(function()
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-    local g = pg:FindFirstChild("SideDashAssistGUI")
-    if g then g:Destroy() end
+    for _, name in ipairs({"SideDashAssistGUI"}) do
+        local g = pg:FindFirstChild(name)
+        if g then g:Destroy() end
+    end
 end)
 
 task.wait(0.1)
@@ -14,6 +16,7 @@ local PlayersService = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local InputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
@@ -40,7 +43,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 end)
 
--- Animations (from original)
+-- Animations
 local ANIMATION_IDS = {
     [10449761463] = {Left = 10480796021, Right = 10480793962, Straight = 10479335397},
     [13076380114] = {Left = 101843860692381, Right = 100087324592640, Straight = 110878031211717}
@@ -57,14 +60,26 @@ local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
 local TARGET_REACH_THRESHOLD = 10
+
+-- Increased dash speed
 local DASH_SPEED = 180
+
 local DIRECTION_LERP_FACTOR = 0.7
 local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
 
--- COOLDOWN SYSTEM (2 seconds) - NEW
+-- State
+local isDashing = false
+local sideAnimationTrack = nil
+local straightAnimationTrack = nil
+local lastButtonPressTime = -math.huge
+
+local isAutoRotateDisabled = false
+local autoRotateConnection = nil
+
+-- COOLDOWN SYSTEM (2 seconds) - INJECTED
 local DASH_COOLDOWN = 2
 local lastDashTime = -math.huge
 
@@ -77,17 +92,6 @@ local function dashRemaining()
     return math.max(0, r)
 end
 
--- State
-local isDashing = false
-local sideAnimationTrack = nil
-local straightAnimationTrack = nil
-local lastButtonPressTime = -math.huge
-local isAutoRotateDisabled = false
-local autoRotateConnection = nil
-
--- CHAMS STATE - NEW
-local chamState = {active = false, model = nil, cons = {}}
-
 -- Dash SFX (non-button)
 local dashSound = Instance.new("Sound")
 dashSound.Name = "DashSFX"
@@ -96,19 +100,17 @@ dashSound.Volume = 2
 dashSound.Looped = false
 dashSound.Parent = WorkspaceService
 
--- EXECUTION SOUND - NEW
-do
+-- EXECUTION SOUND - INJECTED (safe, fires once at startup)
+pcall(function()
     local executionSound = Instance.new("Sound")
-    executionSound.Name = "SDA_ExecutionSFX"
     executionSound.SoundId = "rbxassetid://115916891254154"
     executionSound.Volume = 1
-    executionSound.Looped = false
     executionSound.Parent = WorkspaceService
     task.defer(function()
         pcall(function() executionSound:Play() end)
-        task.delay(3, function() pcall(function() executionSound:Destroy() end) end)
+        task.delay(2.5, function() pcall(function() executionSound:Destroy() end) end)
     end)
-end
+end)
 
 local function setupAutoRotateProtection()
     if autoRotateConnection then
@@ -169,7 +171,10 @@ end
 notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
 
 --// END SNIPPET 1 - CORE SETUP + COOLDOWN + EXECUTION SOUND
---// SNIPPET 2 - DASH LOGIC + CHAM SYSTEM + NO-FOLLOW SNAPSHOT
+--// SNIPPET 2 - DASH LOGIC (ORIGINAL) + CHAM SYSTEM (INJECTED)
+
+-- subscribe to Waspire :)
+--// SNIPPET 2 - DASH LOGIC
 
 -- Anim + targeting
 local function getHumanoidAndAnimator()
@@ -272,7 +277,9 @@ local function calculateDashDistance(gapSliderValue)
     return 1 + 11 * math.clamp(gapSliderValue or 14, 0, 100) / 100
 end
 
--- CHAM SYSTEM - NEW
+-- CHAM SYSTEM - INJECTED (safe helpers, only used on dash)
+local chamState = {active = false, model = nil, cons = {}}
+
 local function clearChams()
     if chamState.cons then
         for _, c in ipairs(chamState.cons) do pcall(function() c:Disconnect() end) end
@@ -346,9 +353,9 @@ local function fadeChams(toTransparency, timeSec)
 end
 
 --// END SNIPPET 2 - DASH LOGIC + CHAM SYSTEM
---// SNIPPET 3 - DASH EXECUTION WITH COOLDOWN + NO-FOLLOW + CHAMS
+--// SNIPPET 3 - DASH EXECUTION (ORIGINAL) + COOLDOWN + CHAMS (INJECTED)
 
--- Settings (from original)
+-- Settings
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash gap"] = 14}
 local lockedTargetPlayer = nil
 
@@ -496,13 +503,13 @@ local function communicateWithServer(communicationData)
     end)
 end
 
--- MAIN CIRCULAR DASH FUNCTION WITH COOLDOWN + NO-FOLLOW + CHAMS
+-- Main circular dash ground fix 120 better anim end
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then
         return
     end
 
-    -- COOLDOWN GATE - NEW
+    -- COOLDOWN GATE - INJECTED
     if not dashReady() then
         notify("Cooldown", "Dash on cooldown!")
         return
@@ -512,7 +519,6 @@ local function performCircularDash(targetCharacter)
     isDashing = true
     local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
     local originalAutoRotate = characterHumanoid and characterHumanoid.AutoRotate
-
     if characterHumanoid then
         isAutoRotateDisabled = true
         pcall(function() characterHumanoid.AutoRotate = false end)
@@ -531,16 +537,16 @@ local function performCircularDash(targetCharacter)
     local dashDistance = math.clamp(calculateDashDistance(settingsValues["Dash gap"]), MIN_DASH_DISTANCE, MAX_DASH_DISTANCE)
     local targetRoot = targetCharacter.HumanoidRootPart
 
-    -- APPLY CHAMS - NEW
+    -- APPLY CHAMS - INJECTED
     applyChams(targetCharacter)
     fadeChams(0, 0.3)
 
-    if MIN_TARGET_DISTANCE < (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
+    if MINTARGETDISTANCE < (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
     end
 
     if targetRoot and targetRoot.Parent and HumanoidRootPart and HumanoidRootPart.Parent then
-        -- SNAPSHOT TARGET POSITION AT DASH START - NEW (prevents blatant following)
+        -- SNAPSHOT TARGET - INJECTED (prevents following)
         local snapshotTargetPosition = targetRoot.Position
         local characterPosition = HumanoidRootPart.Position
         local characterRightVector = HumanoidRootPart.CFrame.RightVector
@@ -633,20 +639,18 @@ local function performCircularDash(targetCharacter)
         dashEnded = true
         if shouldEndDash then
             isDashing = false
-            fadeChams(1, 0.3) -- FADE OUT CHAMS - NEW
+            fadeChams(1, 0.3) -- FADE OUT CHAMS - INJECTED
         end
     else
         restoreAutoRotate()
         isDashing = false
-        fadeChams(1, 0.3) -- FADE OUT CHAMS - NEW
+        fadeChams(1, 0.3) -- FADE OUT CHAMS - INJECTED
     end
 end
 
 -- E key
 InputService.InputBegan:Connect(function(inp, gp)
-    if gp or isDashing or isCharacterDisabled() then
-        return
-    end
+    if gp or isDashing or isCharacterDisabled() then return end
     if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == Enum.KeyCode.E then
         local target = getCurrentTarget()
         if target then
@@ -655,8 +659,11 @@ InputService.InputBegan:Connect(function(inp, gp)
     end
 end)
 
---// END SNIPPET 3 - DASH EXECUTION WITH COOLDOWN + CHAMS + SNAP TARGET
---// SNIPPET 4 - YOUR ORIGINAL GUI + COOLDOWN NOTIFIER (NO ZINDEX BUG)
+--// END SNIPPET 3 - DASH EXECUTION + COOLDOWN + CHAMS
+--// SNIPPET 4 - GUI + COOLDOWN NOTIFIER
+
+-- subscribe to Waspire :)
+--// SNIPPET 3 - GUI RED BUTTON
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
@@ -698,11 +705,11 @@ local mainCorner = Instance.new("UICorner", mainFrame)
 mainCorner.CornerRadius = UDim.new(0, 20)
 
 local mainBgGradient = Instance.new("UIGradient")
-mainBgGradient.Color = ColorSequence.new(
+mainBgGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
-)
+})
 mainBgGradient.Rotation = 90
 mainBgGradient.Parent = mainFrame
 
@@ -720,11 +727,11 @@ local borderCorner = Instance.new("UICorner", borderFrame)
 borderCorner.CornerRadius = UDim.new(0, 24)
 
 local borderGradient = Instance.new("UIGradient")
-borderGradient.Color = ColorSequence.new(
+borderGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 0, 0)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26))
-)
+})
 borderGradient.Rotation = 45
 borderGradient.Parent = borderFrame
 
@@ -825,10 +832,10 @@ discordBtn.Parent = mainFrame
 Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 10)
 
 local discordGradient = Instance.new("UIGradient", discordBtn)
-discordGradient.Color = ColorSequence.new(
+discordGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 135, 255)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 72, 220))
-)
+})
 discordGradient.Rotation = 90
 
 local ytBtn = Instance.new("TextButton")
@@ -846,10 +853,10 @@ ytBtn.Parent = mainFrame
 Instance.new("UICorner", ytBtn).CornerRadius = UDim.new(0, 10)
 
 local ytGradient = Instance.new("UIGradient", ytBtn)
-ytGradient.Color = ColorSequence.new(
+ytGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 0, 0))
-)
+})
 ytGradient.Rotation = 90
 
 -- Settings overlay with keybind info
@@ -866,11 +873,11 @@ settingsOverlay.Draggable = true
 Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
 
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
-overlayGradient.Color = ColorSequence.new(
+overlayGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
-)
+})
 overlayGradient.Rotation = 90
 
 local settingsTitle = Instance.new("TextLabel")
@@ -949,51 +956,6 @@ comingSoon.Font = Enum.Font.GothamBold
 comingSoon.TextXAlignment = Enum.TextXAlignment.Center
 comingSoon.Parent = settingsOverlay
 
--- COOLDOWN NOTIFIER - NEW
-local cooldownLabel = Instance.new("TextLabel")
-cooldownLabel.Name = "CooldownLabel"
-cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
-cooldownLabel.Position = UDim2.new(0, 10, 1, -60)
-cooldownLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-cooldownLabel.BackgroundTransparency = 0.3
-cooldownLabel.BorderSizePixel = 0
-cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-cooldownLabel.TextSize = 16
-cooldownLabel.Font = Enum.Font.GothamBold
-cooldownLabel.TextStrokeTransparency = 0.5
-cooldownLabel.Parent = gui
-Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
-
--- COOLDOWN LIVE UPDATE - NEW
-local cooldownConnection
-local function updateCooldown()
-    if cooldownConnection then pcall(function() cooldownConnection:Disconnect() end) end
-    
-    cooldownConnection = RunService.Heartbeat:Connect(function()
-        if not gui or not gui.Parent then return end
-        
-        local remaining = dashRemaining()
-        
-        if remaining > 0 then
-            local displayTime = math.ceil(remaining * 10) / 10
-            cooldownLabel.Text = string.format("%.1f", displayTime) .. "s"
-            
-            if displayTime > 1.2 then
-                cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-            elseif displayTime > 0.5 then
-                cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-            else
-                cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            end
-        else
-            cooldownLabel.Text = "Ready!"
-            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-        end
-    end)
-end
-
-updateCooldown()
-
 -- Open lock buttons
 local openButton = Instance.new("TextButton")
 openButton.Name = "OpenGuiButton"
@@ -1041,11 +1003,11 @@ dashBtn.Draggable = true
 Instance.new("UICorner", dashBtn).CornerRadius = UDim.new(1, 0)
 
 local dashGrad = Instance.new("UIGradient", dashBtn)
-dashGrad.Color = ColorSequence.new(
+dashGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 0, 0)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 0, 0))
-)
+})
 dashGrad.Rotation = 45
 
 local dashIcon = Instance.new("ImageLabel")
@@ -1162,6 +1124,51 @@ ytBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- COOLDOWN NOTIFIER - INJECTED AT END
+local cooldownLabel = Instance.new("TextLabel")
+cooldownLabel.Name = "CooldownLabel"
+cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
+cooldownLabel.Position = UDim2.new(0, 10, 1, -60)
+cooldownLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+cooldownLabel.BackgroundTransparency = 0.3
+cooldownLabel.BorderSizePixel = 0
+cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+cooldownLabel.TextSize = 16
+cooldownLabel.Font = Enum.Font.GothamBold
+cooldownLabel.TextStrokeTransparency = 0.5
+cooldownLabel.Parent = gui
+Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
+
+-- COOLDOWN LIVE UPDATE
+local cooldownConnection
+local function updateCooldown()
+    if cooldownConnection then pcall(function() cooldownConnection:Disconnect() end) end
+    
+    cooldownConnection = RunService.Heartbeat:Connect(function()
+        if not gui or not gui.Parent then return end
+        
+        local remaining = dashRemaining()
+        
+        if remaining > 0 then
+            local displayTime = math.ceil(remaining * 10) / 10
+            cooldownLabel.Text = string.format("%.1f", displayTime) .. "s"
+            
+            if displayTime > 1.2 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            elseif displayTime > 0.5 then
+                cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+            else
+                cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            end
+        else
+            cooldownLabel.Text = "Ready!"
+            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        end
+    end)
+end
+
+updateCooldown()
+
 -- Initial show
 mainFrame.Visible = true
 TweenService:Create(blur, TweenInfo.new(0.3), {Size = 12}):Play()
@@ -1173,4 +1180,4 @@ end)
 
 print("subscribe to Waspire")
 
---// END SNIPPET 4 - YOUR FULL GUI + COOLDOWN NOTIFIER
+--// END SNIPPET 4 - GUI + COOLDOWN NOTIFIER
