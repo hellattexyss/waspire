@@ -15,11 +15,57 @@ local TweenService = game:GetService("TweenService")
 local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
+local CoreGui = game:FindService("CoreGui")
 
 local LocalPlayer = PlayersService.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+-- ESP/CHAM SYSTEM
+local espConnections = {}
+local Storage = Instance.new("Folder")
+Storage.Parent = CoreGui
+Storage.Name = "Highlight_Storage"
+
+local function createPlayerCham(plr)
+    if plr == LocalPlayer then return end
+    
+    local Highlight = Instance.new("Highlight")
+    Highlight.Name = plr.Name
+    Highlight.FillColor = Color3.fromRGB(175, 25, 255)
+    Highlight.DepthMode = "AlwaysOnTop"
+    Highlight.FillTransparency = 0.5
+    Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    Highlight.OutlineTransparency = 0
+    Highlight.Parent = Storage
+    
+    local plrchar = plr.Character
+    if plrchar then
+        Highlight.Adornee = plrchar
+    end
+
+    espConnections[plr] = plr.CharacterAdded:Connect(function(char)
+        Highlight.Adornee = char
+    end)
+end
+
+PlayersService.PlayerAdded:Connect(createPlayerCham)
+for i, v in next, PlayersService:GetPlayers() do
+    if v ~= LocalPlayer then
+        createPlayerCham(v)
+    end
+end
+
+PlayersService.PlayerRemoving:Connect(function(plr)
+    local plrname = plr.Name
+    if Storage[plrname] then
+        Storage[plrname]:Destroy()
+    end
+    if espConnections[plr] then
+        espConnections[plr]:Disconnect()
+    end
+end)
 
 local function isCharacterDisabled()
     if not (Humanoid and Humanoid.Parent) then return false end
@@ -45,7 +91,7 @@ local leftAnimationId = currentGameAnimations.Left
 local rightAnimationId = currentGameAnimations.Right
 local straightAnimationId = currentGameAnimations.Straight
 
-local MAX_TARGET_RANGE = 40
+local MAX_TARGET_RANGE = 4
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
@@ -223,20 +269,6 @@ local function findNearestTarget(maxRange)
                 local distance = (playerRoot.Position - rootPosition).Magnitude
                 if distance < nearestDistance and distance <= maxRange then
                     nearestTarget = player.Character
-                    nearestDistance = distance
-                end
-            end
-        end
-    end
-
-    for _, descendant in pairs(WorkspaceService:GetDescendants()) do
-        if descendant:IsA("Model") and not PlayersService:GetPlayerFromCharacter(descendant) then
-            local npcHumanoid = descendant:FindFirstChild("Humanoid")
-            local npcRoot = descendant:FindFirstChild("HumanoidRootPart")
-            if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
-                local distance = (npcRoot.Position - rootPosition).Magnitude
-                if distance < nearestDistance and distance <= maxRange then
-                    nearestTarget = descendant
                     nearestDistance = distance
                 end
             end
@@ -529,10 +561,11 @@ InputService.InputBegan:Connect(function(inp, gp)
         local target = getCurrentTarget()
         if target then
             performCircularDash(target)
+        else
+            notify("No Target Found", "❌ No players in range (4 studs max)!")
         end
     end
 end)
-
 local gui = Instance.new("ScreenGui")
 gui.Name = "SideDashAssistGUI"
 gui.ResetOnSpawn = false
@@ -788,10 +821,11 @@ dashIcon.Size = UDim2.new(0, 95, 0, 95)
 dashIcon.Position = UDim2.new(0.5, -47.5, 0.5, -47.5)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
+-- SETTINGS OVERLAY (SMALLER, LEFT SIDE)
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
-settingsOverlay.Size = UDim2.new(0, 300, 0, 240)
-settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
+settingsOverlay.Size = UDim2.new(0, 240, 0, 200)
+settingsOverlay.Position = UDim2.new(0, 20, 0.2, 0)
 settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 settingsOverlay.BackgroundTransparency = 0
 settingsOverlay.BorderSizePixel = 0
@@ -872,21 +906,11 @@ keyInfo2.Font = Enum.Font.Gotham
 keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
 keyInfo2.Parent = keybindFrame
 
-local comingSoon = Instance.new("TextLabel")
-comingSoon.Size = UDim2.new(1, 0, 0, 30)
-comingSoon.Position = UDim2.new(0, 0, 0, 180)
-comingSoon.BackgroundTransparency = 1
-comingSoon.Text = "More settings coming soon..."
-comingSoon.TextColor3 = Color3.fromRGB(255, 60, 60)
-comingSoon.TextSize = 16
-comingSoon.Font = Enum.Font.GothamBold
-comingSoon.TextXAlignment = Enum.TextXAlignment.Center
-comingSoon.Parent = settingsOverlay
-
+-- KEYBINDS OVERLAY (SMALLER, RIGHT SIDE)
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
-keybindsOverlay.Size = UDim2.new(0, 320, 0, 280)
-keybindsOverlay.Position = UDim2.new(0.5, -160, 0.2, 0)
+keybindsOverlay.Size = UDim2.new(0, 240, 0, 240)
+keybindsOverlay.Position = UDim2.new(1, -260, 0.2, 0)
 keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 keybindsOverlay.BackgroundTransparency = 0
 keybindsOverlay.BorderSizePixel = 0
@@ -929,7 +953,7 @@ Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 10)
 
 local keybindLabel = Instance.new("TextLabel")
 keybindLabel.Size = UDim2.new(1, -32, 0, 25)
-keybindLabel.Position = UDim2.new(0, 16, 0, 55)
+keybindLabel.Position = UDim2.new(0, 16, 0, 50)
 keybindLabel.BackgroundTransparency = 1
 keybindLabel.Text = "Dash Keybind:"
 keybindLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
@@ -940,7 +964,7 @@ keybindLabel.Parent = keybindsOverlay
 
 local keybindTextbox = Instance.new("TextBox")
 keybindTextbox.Size = UDim2.new(1, -32, 0, 32)
-keybindTextbox.Position = UDim2.new(0, 16, 0, 80)
+keybindTextbox.Position = UDim2.new(0, 16, 0, 75)
 keybindTextbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 keybindTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
 keybindTextbox.PlaceholderText = "Enter key (E, Q, R, etc)"
@@ -954,7 +978,7 @@ Instance.new("UICorner", keybindTextbox).CornerRadius = UDim.new(0, 8)
 
 local currentKeyLabel = Instance.new("TextLabel")
 currentKeyLabel.Size = UDim2.new(1, -32, 0, 24)
-currentKeyLabel.Position = UDim2.new(0, 16, 0, 120)
+currentKeyLabel.Position = UDim2.new(0, 16, 0, 110)
 currentKeyLabel.BackgroundTransparency = 1
 currentKeyLabel.Text = "Current Key: E"
 currentKeyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -964,8 +988,8 @@ currentKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
 currentKeyLabel.Parent = keybindsOverlay
 
 local keyInfoBox = Instance.new("Frame")
-keyInfoBox.Size = UDim2.new(1, -32, 0, 110)
-keyInfoBox.Position = UDim2.new(0, 16, 0, 150)
+keyInfoBox.Size = UDim2.new(1, -32, 0, 80)
+keyInfoBox.Position = UDim2.new(0, 16, 0, 140)
 keyInfoBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 keyInfoBox.BorderSizePixel = 0
 keyInfoBox.Parent = keybindsOverlay
@@ -975,9 +999,9 @@ local keyInfoText = Instance.new("TextLabel")
 keyInfoText.Size = UDim2.new(1, -12, 1, -12)
 keyInfoText.Position = UDim2.new(0, 6, 0, 6)
 keyInfoText.BackgroundTransparency = 1
-keyInfoText.Text = "Valid Keys:\nE, Q, R, X, C, V, F, G, Z, T, Y, U\n\nPress Enter to apply"
+keyInfoText.Text = "Valid Keys:\nE, Q, R, X, C, V, F, G\nZ, T, Y, U\n\nPress Enter"
 keyInfoText.TextColor3 = Color3.fromRGB(200, 200, 200)
-keyInfoText.TextSize = 12
+keyInfoText.TextSize = 11
 keyInfoText.Font = Enum.Font.Gotham
 keyInfoText.TextXAlignment = Enum.TextXAlignment.Left
 keyInfoText.TextYAlignment = Enum.TextYAlignment.Top
@@ -1048,6 +1072,32 @@ lockButton.Parent = gui
 lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
+-- GUI FADE IN/OUT
+local guiFadeOut = function(frame, duration)
+    local startTime = tick()
+    local startTransparency = frame.BackgroundTransparency
+    
+    while tick() - startTime < duration do
+        local progress = (tick() - startTime) / duration
+        frame.BackgroundTransparency = startTransparency + (1 - startTransparency) * progress
+        task.wait(0.01)
+    end
+    frame.Visible = false
+end
+
+local guiFadeIn = function(frame, duration)
+    frame.Visible = true
+    local startTime = tick()
+    frame.BackgroundTransparency = 1
+    
+    while tick() - startTime < duration do
+        local progress = (tick() - startTime) / duration
+        frame.BackgroundTransparency = 1 - progress
+        task.wait(0.01)
+    end
+    frame.BackgroundTransparency = 0
+end
+
 lockButton.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     dashButtonLocked = not dashButtonLocked
@@ -1081,14 +1131,14 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    mainFrame.Visible = false
+    guiFadeOut(mainFrame, 0.3)
     openButton.Visible = true
     lockButton.Visible = true
 end)
 
 minimizeBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    mainFrame.Visible = false
+    guiFadeOut(mainFrame, 0.3)
     openButton.Visible = true
     lockButton.Visible = true
 end)
@@ -1097,27 +1147,35 @@ openButton.MouseButton1Click:Connect(function()
     uiClickSound:Play()
     openButton.Visible = false
     lockButton.Visible = false
-    mainFrame.Visible = true
+    guiFadeIn(mainFrame, 0.3)
 end)
 
 settingsBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    settingsOverlay.Visible = not settingsOverlay.Visible
+    if settingsOverlay.Visible then
+        guiFadeOut(settingsOverlay, 0.2)
+    else
+        guiFadeIn(settingsOverlay, 0.2)
+    end
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    settingsOverlay.Visible = false
+    guiFadeOut(settingsOverlay, 0.2)
 end)
 
 keybindsBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    keybindsOverlay.Visible = not keybindsOverlay.Visible
+    if keybindsOverlay.Visible then
+        guiFadeOut(keybindsOverlay, 0.2)
+    else
+        guiFadeIn(keybindsOverlay, 0.2)
+    end
 end)
 
 keybindsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    keybindsOverlay.Visible = false
+    guiFadeOut(keybindsOverlay, 0.2)
 end)
 
 discordBtn.MouseButton1Click:Connect(function()
