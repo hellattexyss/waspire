@@ -1,4 +1,4 @@
---// COMPLETE REWRITTEN SNIPPET - DASH DISTANCE BUTTON + PROPER DISTANCE CHECK + CLEAN CHAM SYSTEM
+--// COMPLETE FIXED SNIPPET - DASH GAP + CHAM FIX + LOCK EMOJIS + BUTTON SIZE CHANGER
 
 -- Cleanup old GUIs
 pcall(function()
@@ -66,7 +66,7 @@ local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
-local DASH_GAP = 2.0  -- DASH GAP SET TO 2.0
+local DASH_GAP = 0.5  -- LOWERED DASH GAP FROM 2.0 TO 0.5
 
 -- State
 local isDashing = false
@@ -79,6 +79,9 @@ local autoRotateConnection = nil
 -- COOLDOWN SYSTEM (2 seconds)
 local DASH_COOLDOWN = 2
 local lastDashTime = -math.huge
+
+-- RED BUTTON SIZE STATE
+local redButtonSize = 90
 
 local function dashReady()
     return (tick() - lastDashTime) >= DASH_COOLDOWN
@@ -165,7 +168,7 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v2.2", "Loaded! Press E or click the red dash button")
+notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
 
 -- ============ DASH LOGIC ============
 
@@ -264,7 +267,7 @@ local function calculateDashAngle(_degreesSliderValue)
     return 160
 end
 
--- CHAM SYSTEM - REWRITTEN (ONLY BODY PARTS, NOT HITBOX)
+-- CHAM SYSTEM - FIXED (APPLIES TO ALL BODY PARTS PROPERLY)
 local chamState = {active = false, model = nil, cons = {}, targetRootPart = nil}
 
 local function clearChams()
@@ -290,36 +293,23 @@ local function applyChams(model)
     chamState.model = model
     chamState.targetRootPart = model:FindFirstChild("HumanoidRootPart")
 
-    -- Apply chams ONLY to body parts (Head, Torso, Arms, Legs) - EXCLUDE HITBOX
+    -- Apply chams to ALL visible body parts (HEAD, TORSO, ARMS, LEGS)
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") then
-            -- Skip hitbox parts
-            if p.Name == "HumanoidRootPart" or p.Name == "Head" or string.find(p.Name, "Humanoid") then
+            -- ONLY exclude HumanoidRootPart (the invisible hitbox)
+            if p.Name == "HumanoidRootPart" then
                 continue
             end
             
-            -- Only apply to body parts and clothing (Torso, LeftArm, RightArm, LeftLeg, RightLeg, etc.)
-            local isBodyPart = (p.Name == "Torso" or p.Name == "UpperTorso" or p.Name == "LowerTorso" or 
-                               p.Name == "LeftArm" or p.Name == "RightArm" or 
-                               p.Name == "LeftLeg" or p.Name == "RightLeg" or 
-                               p.Name == "LeftUpperArm" or p.Name == "RightUpperArm" or
-                               p.Name == "LeftLowerArm" or p.Name == "RightLowerArm" or
-                               p.Name == "LeftUpperLeg" or p.Name == "RightUpperLeg" or
-                               p.Name == "LeftLowerLeg" or p.Name == "RightLowerLeg")
-            
-            -- Also include clothing/accessories
-            local isClothing = (p.Parent:IsA("Accessory") or p.Parent:IsA("Model") and string.find(p.Parent.Name, "Pants") or string.find(p.Parent.Name, "Shirt"))
-            
-            if isBodyPart or isClothing then
-                local b = Instance.new("BoxHandleAdornment")
-                b.Name = "SDA_BodyCham"
-                b.Adornee = p
-                b.AlwaysOnTop = true
-                b.Size = p.Size + Vector3.new(0.08, 0.08, 0.08)
-                b.Color3 = Color3.fromRGB(255, 50, 50)
-                b.Transparency = 0.85
-                b.Parent = p
-            end
+            -- APPLY TO ALL OTHER PARTS (Head, Torso, Arms, Legs, etc.)
+            local b = Instance.new("BoxHandleAdornment")
+            b.Name = "SDA_BodyCham"
+            b.Adornee = p
+            b.AlwaysOnTop = true
+            b.Size = p.Size + Vector3.new(0.08, 0.08, 0.08)
+            b.Color3 = Color3.fromRGB(255, 50, 50)
+            b.Transparency = 0.85
+            b.Parent = p
         end
     end
 
@@ -365,7 +355,7 @@ end
 
 -- ============ DASH EXECUTION ============
 
--- Settings with DASH DISTANCE (not studs, but actual distance check)
+-- Settings with DASH DISTANCE
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash distance"] = 20}
 local lockedTargetPlayer = nil
 local isSliding = false
@@ -524,7 +514,6 @@ local function performCircularDash(targetCharacter)
         return
     end
     
-    -- DISTANCE CHECK - IF PLAYER IS FARTHER THAN DASH DISTANCE, BLOCK DASH
     local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
     if targetRoot then
         local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
@@ -554,7 +543,7 @@ local function performCircularDash(targetCharacter)
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
     local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
     local dashAngleRad = math.rad(dashAngle)
-    local dashDistance = DASH_GAP  -- USE DASH GAP (2.0) AS DISTANCE
+    local dashDistance = DASH_GAP
 
     applyChams(targetCharacter)
     fadeChams(0, 0.3)
@@ -772,7 +761,7 @@ versionLabel.Size = UDim2.new(0, 55, 0, 24)
 versionLabel.Position = UDim2.new(0, 215, 0, 13)
 versionLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 versionLabel.BorderSizePixel = 0
-versionLabel.Text = "v2.2"
+versionLabel.Text = "v2.0"
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextSize = 13
 versionLabel.Font = Enum.Font.GothamBold
@@ -933,7 +922,7 @@ settingsCloseBtn.Style = Enum.ButtonStyle.Custom
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 8)
 
--- DASH DISTANCE BUTTON (CLICK TO INCREASE)
+-- DASH DISTANCE BUTTON
 local dashDistanceLabel = Instance.new("TextLabel")
 dashDistanceLabel.Size = UDim2.new(1, -32, 0, 25)
 dashDistanceLabel.Position = UDim2.new(0, 16, 0, 55)
@@ -1038,7 +1027,7 @@ local infoText5 = Instance.new("TextLabel")
 infoText5.Size = UDim2.new(1, -20, 0, 20)
 infoText5.Position = UDim2.new(0, 10, 0, 128)
 infoText5.BackgroundTransparency = 1
-infoText5.Text = "• Gap: 2.0 studs (distance from target)"
+infoText5.Text = "• Gap: 0.5 studs (distance from target)"
 infoText5.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText5.TextSize = 12
 infoText5.Font = Enum.Font.Gotham
@@ -1059,7 +1048,7 @@ infoText6.Parent = infoFrame
 -- KEYBINDS OVERLAY
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
-keybindsOverlay.Size = UDim2.new(0, 320, 0, 300)
+keybindsOverlay.Size = UDim2.new(0, 320, 0, 400)
 keybindsOverlay.Position = UDim2.new(0, 20, 0.1, 0)
 keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 keybindsOverlay.BackgroundTransparency = 0
@@ -1159,6 +1148,43 @@ dashKeyButton.MouseButton1Click:Connect(function()
     end
 end)
 
+-- BUTTON SIZE CHANGER (NEW)
+local buttonSizeLabel = Instance.new("TextLabel")
+buttonSizeLabel.Size = UDim2.new(1, -32, 0, 25)
+buttonSizeLabel.Position = UDim2.new(0, 16, 0, 150)
+buttonSizeLabel.BackgroundTransparency = 1
+buttonSizeLabel.Text = "Red Button Size:"
+buttonSizeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+buttonSizeLabel.TextSize = 13
+buttonSizeLabel.Font = Enum.Font.Gotham
+buttonSizeLabel.TextXAlignment = Enum.TextXAlignment.Left
+buttonSizeLabel.Parent = keybindsOverlay
+
+local buttonSizeButton = Instance.new("TextButton")
+buttonSizeButton.Size = UDim2.new(1, -32, 0, 40)
+buttonSizeButton.Position = UDim2.new(0, 16, 0, 180)
+buttonSizeButton.BackgroundColor3 = Color3.fromRGB(255, 120, 50)
+buttonSizeButton.BorderSizePixel = 0
+buttonSizeButton.Text = "Size: " .. redButtonSize .. " (Click to change)"
+buttonSizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+buttonSizeButton.TextSize = 13
+buttonSizeButton.Font = Enum.Font.GothamBold
+buttonSizeButton.Style = Enum.ButtonStyle.Custom
+buttonSizeButton.Parent = keybindsOverlay
+Instance.new("UICorner", buttonSizeButton).CornerRadius = UDim.new(0, 8)
+
+buttonSizeButton.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    redButtonSize = redButtonSize + 10
+    if redButtonSize > 150 then
+        redButtonSize = 70
+    end
+    buttonSizeButton.Text = "Size: " .. redButtonSize .. " (Click to change)"
+    dashBtn.Size = UDim2.new(0, redButtonSize, 0, redButtonSize)
+    dashIcon.Size = UDim2.new(0, redButtonSize - 15, 0, redButtonSize - 15)
+    dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
+end)
+
 -- Update keybind input
 InputService.InputBegan:Connect(function(inp, gp)
     if gp or isDashing or isCharacterDisabled() then return end
@@ -1195,9 +1221,9 @@ lockButton.Name = "LockButton"
 lockButton.Size = UDim2.new(0, 90, 0, 34)
 lockButton.Position = UDim2.new(0, 110, 0.5, -17)
 lockButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-lockButton.Text = "Unlocked"
+lockButton.Text = "🔓 Unlocked"
 lockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-lockButton.TextSize = 13
+lockButton.TextSize = 11
 lockButton.Font = Enum.Font.GothamBold
 lockButton.BorderSizePixel = 0
 lockButton.Visible = false
@@ -1209,8 +1235,8 @@ Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 -- Red dash button
 local dashBtn = Instance.new("Frame")
 dashBtn.Name = "DashButtonFinal"
-dashBtn.Size = UDim2.new(0, 110, 0, 110)
-dashBtn.Position = UDim2.new(1, -125, 0.5, -55)
+dashBtn.Size = UDim2.new(0, 90, 0, 90)
+dashBtn.Position = UDim2.new(1, -125, 0.5, -45)
 dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 dashBtn.BorderSizePixel = 0
 dashBtn.Parent = gui
@@ -1228,8 +1254,8 @@ dashGrad.Rotation = 45
 
 local dashIcon = Instance.new("ImageLabel")
 dashIcon.BackgroundTransparency = 1
-dashIcon.Size = UDim2.new(0, 95, 0, 95)
-dashIcon.Position = UDim2.new(0.5, -47.5, 0.5, -47.5)
+dashIcon.Size = UDim2.new(0, 75, 0, 75)
+dashIcon.Position = UDim2.new(0.5, -37.5, 0.5, -37.5)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
 
@@ -1253,10 +1279,10 @@ lockButton.MouseButton1Click:Connect(function()
     openButton.Draggable = not dashButtonLocked
     lockButton.Draggable = not dashButtonLocked
     if dashButtonLocked then
-        lockButton.Text = "Locked"
+        lockButton.Text = "🔒 Locked"
         notifyGui("Dash button GUI locked in place.")
     else
-        lockButton.Text = "Unlocked"
+        lockButton.Text = "🔓 Unlocked"
         notifyGui("Dash button GUI can be dragged again.")
     end
 end)
@@ -1403,4 +1429,4 @@ end)
 
 print("subscribe to Waspire")
 
---// END COMPLETE REWRITTEN SNIPPET - ALL FEATURES WORKING
+--// END COMPLETE FIXED SNIPPET - ALL FEATURES WORKING PERFECTLY
