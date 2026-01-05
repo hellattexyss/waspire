@@ -1,4 +1,4 @@
---// COMPLETE FIXED SNIPPET - DASH GAP + CHAM FIX + LOCK EMOJIS + BUTTON SIZE CHANGER
+--// COMPLETE FIXED SNIPPET - SIZE CHANGER FIXED + CHAM REMOVED + DASH DEGREE 120
 
 -- Cleanup old GUIs
 pcall(function()
@@ -66,7 +66,8 @@ local CAMERA_FOLLOW_DELAY = 0.7
 local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
-local DASH_GAP = 0.5  -- LOWERED DASH GAP FROM 2.0 TO 0.5
+local DASH_GAP = 0.5
+local DASH_DEGREE = 120  -- REDUCED FROM 160 TO 120
 
 -- State
 local isDashing = false
@@ -263,96 +264,6 @@ local function calculateDashDuration(speedSliderValue)
     return baseMin + (baseMax - baseMin) * clampedValue
 end
 
-local function calculateDashAngle(_degreesSliderValue)
-    return 160
-end
-
--- CHAM SYSTEM - FIXED (APPLIES TO ALL BODY PARTS PROPERLY)
-local chamState = {active = false, model = nil, cons = {}, targetRootPart = nil}
-
-local function clearChams()
-    if chamState.cons then
-        for _, c in ipairs(chamState.cons) do pcall(function() c:Disconnect() end) end
-    end
-    chamState.cons = {}
-    if chamState.model and chamState.model.Parent then
-        for _, d in ipairs(chamState.model:GetDescendants()) do
-            if d:IsA("BoxHandleAdornment") and d.Name == "SDA_BodyCham" then
-                pcall(function() d:Destroy() end)
-            end
-        end
-    end
-    chamState.active = false
-    chamState.model = nil
-    chamState.targetRootPart = nil
-end
-
-local function applyChams(model)
-    clearChams()
-    if not (model and model.Parent) then return end
-    chamState.model = model
-    chamState.targetRootPart = model:FindFirstChild("HumanoidRootPart")
-
-    -- Apply chams to ALL visible body parts (HEAD, TORSO, ARMS, LEGS)
-    for _, p in ipairs(model:GetDescendants()) do
-        if p:IsA("BasePart") then
-            -- ONLY exclude HumanoidRootPart (the invisible hitbox)
-            if p.Name == "HumanoidRootPart" then
-                continue
-            end
-            
-            -- APPLY TO ALL OTHER PARTS (Head, Torso, Arms, Legs, etc.)
-            local b = Instance.new("BoxHandleAdornment")
-            b.Name = "SDA_BodyCham"
-            b.Adornee = p
-            b.AlwaysOnTop = true
-            b.Size = p.Size + Vector3.new(0.08, 0.08, 0.08)
-            b.Color3 = Color3.fromRGB(255, 50, 50)
-            b.Transparency = 0.85
-            b.Parent = p
-        end
-    end
-
-    chamState.active = true
-end
-
-local function fadeChams(toTransparency, timeSec)
-    if not (chamState.model and chamState.model.Parent) then 
-        clearChams()
-        return 
-    end
-    local start = tick()
-    local from = nil
-
-    local con
-    con = RunService.RenderStepped:Connect(function()
-        if not (chamState.model and chamState.model.Parent) then
-            pcall(function() con:Disconnect() end)
-            clearChams()
-            return
-        end
-
-        local t = math.clamp((tick() - start) / math.max(0.01, timeSec), 0, 1)
-
-        for _, p in ipairs(chamState.model:GetDescendants()) do
-            if p:IsA("BasePart") then
-                local b = p:FindFirstChild("SDA_BodyCham")
-                if b and b:IsA("BoxHandleAdornment") then
-                    if from == nil then from = b.Transparency end
-                    b.Transparency = from + (toTransparency - from) * t
-                end
-            end
-        end
-
-        if t >= 1 then
-            pcall(function() con:Disconnect() end)
-            clearChams()
-        end
-    end)
-
-    table.insert(chamState.cons, con)
-end
-
 -- ============ DASH EXECUTION ============
 
 -- Settings with DASH DISTANCE
@@ -541,12 +452,9 @@ local function performCircularDash(targetCharacter)
     end
 
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
-    local dashAngle = calculateDashAngle(settingsValues["Dash Degrees"])
+    local dashAngle = DASH_DEGREE  -- USE CONSTANT DASH_DEGREE (120)
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = DASH_GAP
-
-    applyChams(targetCharacter)
-    fadeChams(0, 0.3)
 
     if MIN_TARGET_DISTANCE < (targetRoot.Position - HumanoidRootPart.Position).Magnitude then
         performDashMovement(targetRoot, DASH_SPEED)
@@ -645,12 +553,10 @@ local function performCircularDash(targetCharacter)
         dashEnded = true
         if shouldEndDash then
             isDashing = false
-            fadeChams(1, 0.3)
         end
     else
         restoreAutoRotate()
         isDashing = false
-        fadeChams(1, 0.3)
     end
 end
 
@@ -1038,11 +944,11 @@ local infoText6 = Instance.new("TextLabel")
 infoText6.Size = UDim2.new(1, -20, 0, 20)
 infoText6.Position = UDim2.new(0, 10, 0, 150)
 infoText6.BackgroundTransparency = 1
-infoText6.Text = "• Red opponent indicator on dash"
+infoText6.Text = "• Dash degree: 120 (smooth arc)"
 infoText6.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText6.TextSize = 12
 infoText6.Font = Enum.Font.Gotham
-infoText6.TextXAlignment = Enum.TextXAlignment.Left
+inioText6.TextXAlignment = Enum.TextXAlignment.Left
 infoText6.Parent = infoFrame
 
 -- KEYBINDS OVERLAY
@@ -1148,7 +1054,7 @@ dashKeyButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- BUTTON SIZE CHANGER (NEW)
+-- BUTTON SIZE CHANGER - FIXED
 local buttonSizeLabel = Instance.new("TextLabel")
 buttonSizeLabel.Size = UDim2.new(1, -32, 0, 25)
 buttonSizeLabel.Position = UDim2.new(0, 16, 0, 150)
@@ -1172,18 +1078,6 @@ buttonSizeButton.Font = Enum.Font.GothamBold
 buttonSizeButton.Style = Enum.ButtonStyle.Custom
 buttonSizeButton.Parent = keybindsOverlay
 Instance.new("UICorner", buttonSizeButton).CornerRadius = UDim.new(0, 8)
-
-buttonSizeButton.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    redButtonSize = redButtonSize + 10
-    if redButtonSize > 150 then
-        redButtonSize = 70
-    end
-    buttonSizeButton.Text = "Size: " .. redButtonSize .. " (Click to change)"
-    dashBtn.Size = UDim2.new(0, redButtonSize, 0, redButtonSize)
-    dashIcon.Size = UDim2.new(0, redButtonSize - 15, 0, redButtonSize - 15)
-    dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
-end)
 
 -- Update keybind input
 InputService.InputBegan:Connect(function(inp, gp)
@@ -1232,11 +1126,11 @@ lockButton.Parent = gui
 lockButton.Draggable = true
 Instance.new("UICorner", lockButton).CornerRadius = UDim.new(0, 10)
 
--- Red dash button
+-- Red dash button - INITIALIZE WITH CORRECT SIZE
 local dashBtn = Instance.new("Frame")
 dashBtn.Name = "DashButtonFinal"
-dashBtn.Size = UDim2.new(0, 90, 0, 90)
-dashBtn.Position = UDim2.new(1, -125, 0.5, -45)
+dashBtn.Size = UDim2.new(0, redButtonSize, 0, redButtonSize)
+dashBtn.Position = UDim2.new(1, -125, 0.5, -(redButtonSize / 2))
 dashBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 dashBtn.BorderSizePixel = 0
 dashBtn.Parent = gui
@@ -1254,8 +1148,8 @@ dashGrad.Rotation = 45
 
 local dashIcon = Instance.new("ImageLabel")
 dashIcon.BackgroundTransparency = 1
-dashIcon.Size = UDim2.new(0, 75, 0, 75)
-dashIcon.Position = UDim2.new(0.5, -37.5, 0.5, -37.5)
+dashIcon.Size = UDim2.new(0, redButtonSize - 15, 0, redButtonSize - 15)
+dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
 dashIcon.Image = "rbxassetid://12443244342"
 dashIcon.Parent = dashBtn
 
@@ -1377,6 +1271,24 @@ ytBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- BUTTON SIZE CHANGER CLICK LOGIC - FIXED
+buttonSizeButton.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    redButtonSize = redButtonSize + 10
+    if redButtonSize > 150 then
+        redButtonSize = 70
+    end
+    buttonSizeButton.Text = "Size: " .. redButtonSize .. " (Click to change)"
+    
+    -- Update button size and position
+    dashBtn.Size = UDim2.new(0, redButtonSize, 0, redButtonSize)
+    dashBtn.Position = UDim2.new(1, -125, 0.5, -(redButtonSize / 2))
+    
+    -- Update icon size and position
+    dashIcon.Size = UDim2.new(0, redButtonSize - 15, 0, redButtonSize - 15)
+    dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
+end)
+
 -- COOLDOWN NOTIFIER - INSTANT UPDATE
 local cooldownLabel = Instance.new("TextLabel")
 cooldownLabel.Name = "CooldownLabel"
@@ -1429,4 +1341,5 @@ end)
 
 print("subscribe to Waspire")
 
---// END COMPLETE FIXED SNIPPET - ALL FEATURES WORKING PERFECTLY
+--// END COMPLETE FIXED SNIPPET - ALL FIXED
+
