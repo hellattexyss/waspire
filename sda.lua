@@ -889,7 +889,7 @@ local infoText1 = Instance.new("TextLabel")
 infoText1.Size = UDim2.new(1, -20, 0, 20)
 infoText1.Position = UDim2.new(0, 10, 0, 40)
 infoText1.BackgroundTransparency = 1
-infoText1.Text = "• Dash Distance: Max range to target"
+infoText1.Text = "• Select your target range above."
 infoText1.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText1.TextSize = 12
 infoText1.Font = Enum.Font.Gotham
@@ -900,7 +900,7 @@ local infoText2 = Instance.new("TextLabel")
 infoText2.Size = UDim2.new(1, -20, 0, 20)
 infoText2.Position = UDim2.new(0, 10, 0, 62)
 infoText2.BackgroundTransparency = 1
-infoText2.Text = "• Exceeding range = No target found"
+infoText2.Text = "• 25 studs is suggested."
 infoText2.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText2.TextSize = 12
 infoText2.Font = Enum.Font.Gotham
@@ -911,7 +911,7 @@ local infoText3 = Instance.new("TextLabel")
 infoText3.Size = UDim2.new(1, -20, 0, 20)
 infoText3.Position = UDim2.new(0, 10, 0, 84)
 infoText3.BackgroundTransparency = 1
-infoText3.Text = "• Press E or red button to dash"
+infoText3.Text = "• Press E or the mobile button to dash."
 infoText3.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText3.TextSize = 12
 infoText3.Font = Enum.Font.Gotham
@@ -922,7 +922,7 @@ local infoText4 = Instance.new("TextLabel")
 infoText4.Size = UDim2.new(1, -20, 0, 20)
 infoText4.Position = UDim2.new(0, 10, 0, 106)
 infoText4.BackgroundTransparency = 1
-infoText4.Text = "• 2 second cooldown between dashes"
+infoText4.Text = "• Added cooldown to the dash :)"
 infoText4.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText4.TextSize = 12
 infoText4.Font = Enum.Font.Gotham
@@ -1174,10 +1174,10 @@ lockButton.MouseButton1Click:Connect(function()
     lockButton.Draggable = not dashButtonLocked
     if dashButtonLocked then
         lockButton.Text = "🔒 Locked"
-        notifyGui("Dash button GUI locked in place.")
+        notifyGui("Dash button is now locked.")
     else
         lockButton.Text = "🔓 Unlocked"
-        notifyGui("Dash button GUI can be dragged again.")
+        notifyGui("Dash button is now unlocked.")
     end
 end)
 
@@ -1342,4 +1342,5 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
