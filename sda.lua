@@ -67,7 +67,7 @@ local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
 local DASH_GAP = 0.5
-local DASH_DEGREE = 120
+local DASH_DEGREE = 105
 
 -- State
 local isDashing = false
@@ -1342,5 +1342,6 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
