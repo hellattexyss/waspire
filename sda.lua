@@ -948,7 +948,7 @@ infoText6.Text = "• Dash degree: 120 (smooth arc)"
 infoText6.TextColor3 = Color3.fromRGB(200, 200, 200)
 infoText6.TextSize = 12
 infoText6.Font = Enum.Font.Gotham
-inioText6.TextXAlignment = Enum.TextXAlignment.Left
+infoText6.TextXAlignment = Enum.TextXAlignment.Left
 infoText6.Parent = infoFrame
 
 -- KEYBINDS OVERLAY
@@ -1342,4 +1342,5 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET - ALL FIXED
+
 
