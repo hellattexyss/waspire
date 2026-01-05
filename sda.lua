@@ -811,7 +811,7 @@ local keybindsBtn = Instance.new("TextButton")
 keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
 keybindsBtn.Position = UDim2.new(0, 55, 1, -46)
 keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-keybindsBtn.Text = "⌨️"
+keybindsBtn.Text = "Keyboard"
 keybindsBtn.Font = Enum.Font.GothamBold
 keybindsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 keybindsBtn.TextSize = 19
@@ -1410,7 +1410,8 @@ task.delay(0.1, function()
     loadSound:Play()
 end)
 
-print("subscribe to Waspire")
+print("subscribe to Waspire :)\n, When it comes to developing scripts, waspire is the best!")
 
 --// END COMPLETE FIXED SNIPPET - ALL 4 ISSUES RESOLVED
+
 
