@@ -1,4 +1,4 @@
---// COMPLETE FIXED SNIPPET - STUDS (50 MAX, 30 DEFAULT) + CHAM (FULL BODY, 80% TRANSPARENCY) + COOLDOWN NOTIFIER (INSTANT)
+--// COMPLETE FIXED SNIPPET - DASH RANGE + CHAM FIX + DEGREES + KEYBINDS TAB + SETTINGS TAB FIX
 
 -- Cleanup old GUIs
 pcall(function()
@@ -55,7 +55,7 @@ local rightAnimationId = currentGameAnimations.Right
 local straightAnimationId = currentGameAnimations.Straight
 
 -- Constants
-local MAX_TARGET_RANGE = 40
+local MAX_TARGET_RANGE = 60  -- FIXED: Increased dash range from 40 to 60
 local MIN_DASH_DISTANCE = 1.2
 local MAX_DASH_DISTANCE = 60
 local MIN_TARGET_DISTANCE = 15
@@ -164,7 +164,7 @@ local function notify(title, text)
     end)
 end
 
-notify("Side Dash Assist v1.0", "Loaded! Press E or click the red dash button")
+notify("Side Dash Assist v2.0", "Loaded! Press E or click the red dash button")
 
 -- ============ DASH LOGIC ============
 
@@ -252,16 +252,6 @@ local function findNearestTarget(maxRange)
     return nearestTarget, nearestDistance
 end
 
--- STUDS CALCULATION - FIXED (50 MAX, 30 DEFAULT, WORKS PROPERLY NOW)
-local function calculateDashDistance(studsSliderValue)
-    -- studsSliderValue is 0-100
-    -- Maps to 0-50 studs
-    -- 0 = 0 studs, 50 = 25 studs, 100 = 50 studs
-    local clampedValue = math.clamp(studsSliderValue or 60, 0, 100)
-    local mappedStuds = (clampedValue / 100) * 50
-    return mappedStuds
-end
-
 local function calculateDashDuration(speedSliderValue)
     local clampedValue = math.clamp(speedSliderValue or 49, 0, 100) / 100
     local baseMin = 1.0
@@ -270,11 +260,17 @@ local function calculateDashDuration(speedSliderValue)
 end
 
 local function calculateDashAngle(_degreesSliderValue)
-    return 120
+    return 160  -- FIXED: Increased dash degrees from 120 to 160
 end
 
--- CHAM SYSTEM - FIXED (FULL BODY, 80% TRANSPARENCY, BETTER LOOKING)
-local chamState = {active = false, model = nil, cons = {}}
+local function calculateDashDistance(studsSliderValue)
+    local clampedValue = math.clamp(studsSliderValue or 60, 0, 100)
+    local mappedStuds = (clampedValue / 100) * 50
+    return mappedStuds
+end
+
+-- CHAM SYSTEM - FIXED (NO HITBOX, SEMI-TRANSPARENT, DISAPPEARS AFTER DASH)
+local chamState = {active = false, model = nil, cons = {}, targetRootPart = nil}
 
 local function clearChams()
     if chamState.cons then
@@ -290,24 +286,25 @@ local function clearChams()
     end
     chamState.active = false
     chamState.model = nil
+    chamState.targetRootPart = nil
 end
 
 local function applyChams(model)
     clearChams()
     if not (model and model.Parent) then return end
     chamState.model = model
+    chamState.targetRootPart = model:FindFirstChild("HumanoidRootPart")
 
-    -- Apply chams to ALL body parts for full coverage
+    -- Apply chams to ALL body parts EXCEPT HumanoidRootPart (no hitbox cham)
     for _, p in ipairs(model:GetDescendants()) do
-        if p:IsA("BasePart") then
-            -- Skip humanoidrootpart inner mechanics
+        if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
             local b = Instance.new("BoxHandleAdornment")
             b.Name = "SDA_BodyCham"
             b.Adornee = p
             b.AlwaysOnTop = true
-            b.Size = p.Size + Vector3.new(0.1, 0.1, 0.1)
-            b.Color3 = Color3.fromRGB(255, 0, 0)
-            b.Transparency = 0.8  -- 80% transparency (0.2 opacity)
+            b.Size = p.Size + Vector3.new(0.08, 0.08, 0.08)
+            b.Color3 = Color3.fromRGB(255, 50, 50)  -- Bright red, not glowy
+            b.Transparency = 0.85  -- 85% transparency (15% visible, semi-transparent)
             b.Parent = p
         end
     end
@@ -316,7 +313,10 @@ local function applyChams(model)
 end
 
 local function fadeChams(toTransparency, timeSec)
-    if not (chamState.model and chamState.model.Parent) then return end
+    if not (chamState.model and chamState.model.Parent) then 
+        clearChams()
+        return 
+    end
     local start = tick()
     local from = nil
 
@@ -324,6 +324,7 @@ local function fadeChams(toTransparency, timeSec)
     con = RunService.RenderStepped:Connect(function()
         if not (chamState.model and chamState.model.Parent) then
             pcall(function() con:Disconnect() end)
+            clearChams()
             return
         end
 
@@ -341,9 +342,7 @@ local function fadeChams(toTransparency, timeSec)
 
         if t >= 1 then
             pcall(function() con:Disconnect() end)
-            if toTransparency >= 0.999 then
-                clearChams()
-            end
+            clearChams()
         end
     end)
 
@@ -355,6 +354,7 @@ end
 -- Settings
 local settingsValues = {["Dash speed"] = 49, ["Dash Degrees"] = 32, ["Dash studs"] = 60}
 local lockedTargetPlayer = nil
+local isSliding = false  -- Prevent settings frame drag while sliding
 
 PlayersService.PlayerRemoving:Connect(function(removedPlayer)
     if lockedTargetPlayer == removedPlayer then
@@ -500,15 +500,14 @@ local function communicateWithServer(communicationData)
     end)
 end
 
--- MAIN CIRCULAR DASH WITH COOLDOWN + CHAMS
+-- MAIN CIRCULAR DASH
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then
         return
     end
 
-    -- COOLDOWN GATE - INSTANT CHECK
     if not dashReady() then
-        return  -- Silent fail, don't spam notification
+        return
     end
     lastDashTime = tick()
 
@@ -533,7 +532,6 @@ local function performCircularDash(targetCharacter)
     local dashDistance = calculateDashDistance(settingsValues["Dash studs"])
     local targetRoot = targetCharacter.HumanoidRootPart
 
-    -- APPLY CHAMS IMMEDIATELY
     applyChams(targetCharacter)
     fadeChams(0, 0.3)
 
@@ -748,7 +746,7 @@ versionLabel.Size = UDim2.new(0, 55, 0, 24)
 versionLabel.Position = UDim2.new(0, 215, 0, 13)
 versionLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 versionLabel.BorderSizePixel = 0
-versionLabel.Text = "v2.0"
+versionLabel.Text = "v2.1"
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextSize = 13
 versionLabel.Font = Enum.Font.GothamBold
@@ -794,7 +792,7 @@ minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
--- Settings social
+-- Settings button
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Size = UDim2.new(0, 36, 0, 36)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
@@ -807,6 +805,20 @@ settingsBtn.BorderSizePixel = 0
 settingsBtn.Style = Enum.ButtonStyle.Custom
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
+
+-- KEYBINDS BUTTON (NEW) - Fixed position next to settings
+local keybindsBtn = Instance.new("TextButton")
+keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
+keybindsBtn.Position = UDim2.new(0, 55, 1, -46)
+keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+keybindsBtn.Text = "⌨️"
+keybindsBtn.Font = Enum.Font.GothamBold
+keybindsBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+keybindsBtn.TextSize = 19
+keybindsBtn.BorderSizePixel = 0
+keybindsBtn.Style = Enum.ButtonStyle.Custom
+keybindsBtn.Parent = mainFrame
+Instance.new("UICorner", keybindsBtn).CornerRadius = UDim.new(1, 0)
 
 local discordBtn = Instance.new("TextButton")
 discordBtn.Name = "DiscordButton"
@@ -850,18 +862,18 @@ ytGradient.Color = ColorSequence.new({
 })
 ytGradient.Rotation = 90
 
--- Settings overlay with keybind info
+-- SETTINGS OVERLAY (FIXED - LEFT SIDE, NOT OVERSIZED)
 local settingsOverlay = Instance.new("Frame")
 settingsOverlay.Name = "SettingsOverlay"
-settingsOverlay.Size = UDim2.new(0, 300, 0, 300)
-settingsOverlay.Position = UDim2.new(0, 40, 0.2, 0)
+settingsOverlay.Size = UDim2.new(0, 320, 0, 400)
+settingsOverlay.Position = UDim2.new(0, 20, 0.1, 0)
 settingsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-settingsOverlay.BackgroundTransparency = 1
+settingsOverlay.BackgroundTransparency = 0
 settingsOverlay.BorderSizePixel = 0
 settingsOverlay.Visible = false
 settingsOverlay.Parent = gui
-settingsOverlay.Draggable = true
-Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 19)
+settingsOverlay.Draggable = false  -- No drag while slider present
+Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 16)
 
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
 overlayGradient.Color = ColorSequence.new({
@@ -873,66 +885,67 @@ overlayGradient.Rotation = 90
 
 local settingsTitle = Instance.new("TextLabel")
 settingsTitle.Size = UDim2.new(1, -60, 0, 40)
-settingsTitle.Position = UDim2.new(0, 16, 0, 5)
+settingsTitle.Position = UDim2.new(0, 16, 0, 8)
 settingsTitle.BackgroundTransparency = 1
 settingsTitle.Text = "Settings"
 settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-settingsTitle.TextSize = 21
+settingsTitle.TextSize = 20
 settingsTitle.Font = Enum.Font.GothamBold
 settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
 settingsTitle.Parent = settingsOverlay
 
 local settingsCloseBtn = Instance.new("TextButton")
-settingsCloseBtn.Size = UDim2.new(0, 35, 0, 35)
-settingsCloseBtn.Position = UDim2.new(1, -45, 0, 6)
+settingsCloseBtn.Size = UDim2.new(0, 30, 0, 30)
+settingsCloseBtn.Position = UDim2.new(1, -40, 0, 8)
 settingsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 settingsCloseBtn.Text = "X"
 settingsCloseBtn.Font = Enum.Font.GothamBold
 settingsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
-settingsCloseBtn.TextSize = 19
+settingsCloseBtn.TextSize = 18
 settingsCloseBtn.BorderSizePixel = 0
 settingsCloseBtn.Style = Enum.ButtonStyle.Custom
 settingsCloseBtn.Parent = settingsOverlay
-Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 8)
 
--- STUDS SLIDER
+-- RED STUDS SLIDER IN SETTINGS (FIXED - WORKS PROPERLY)
 local studsLabel = Instance.new("TextLabel")
-studsLabel.Size = UDim2.new(0, 100, 0, 25)
-studsLabel.Position = UDim2.new(0, 15, 0, 55)
+studsLabel.Size = UDim2.new(0, 150, 0, 25)
+studsLabel.Position = UDim2.new(0, 16, 0, 55)
 studsLabel.BackgroundTransparency = 1
 studsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 studsLabel.TextSize = 13
 studsLabel.Font = Enum.Font.Gotham
 studsLabel.Text = "Dash Studs:"
+studsLabel.TextXAlignment = Enum.TextXAlignment.Left
 studsLabel.Parent = settingsOverlay
 
 local studsSlider = Instance.new("Frame")
 studsSlider.Name = "StudsSlider"
-studsSlider.Size = UDim2.new(0, 250, 0, 10)
-studsSlider.Position = UDim2.new(0, 15, 0, 85)
-studsSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+studsSlider.Size = UDim2.new(0, 280, 0, 12)
+studsSlider.Position = UDim2.new(0, 16, 0, 90)
+studsSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 studsSlider.BorderSizePixel = 0
 studsSlider.Parent = settingsOverlay
-Instance.new("UICorner", studsSlider).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", studsSlider).CornerRadius = UDim.new(0, 6)
 
 local studsSliderFill = Instance.new("Frame")
 studsSliderFill.Name = "Fill"
 studsSliderFill.Size = UDim2.new(0.6, 0, 1, 0)
 studsSliderFill.Position = UDim2.new(0, 0, 0, 0)
-studsSliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+studsSliderFill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)  -- BRIGHT RED
 studsSliderFill.BorderSizePixel = 0
 studsSliderFill.Parent = studsSlider
-Instance.new("UICorner", studsSliderFill).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", studsSliderFill).CornerRadius = UDim.new(0, 6)
 
 local studsSliderValue = Instance.new("TextLabel")
 studsSliderValue.Name = "Value"
-studsSliderValue.Size = UDim2.new(0, 60, 0, 20)
-studsSliderValue.Position = UDim2.new(0, 270, 0, 75)
+studsSliderValue.Size = UDim2.new(0, 70, 0, 25)
+studsSliderValue.Position = UDim2.new(0, 16, 0, 110)
 studsSliderValue.BackgroundTransparency = 1
-studsSliderValue.TextColor3 = Color3.fromRGB(100, 150, 255)
-studsSliderValue.TextSize = 12
+studsSliderValue.TextColor3 = Color3.fromRGB(255, 50, 50)
+studsSliderValue.TextSize = 13
 studsSliderValue.Font = Enum.Font.GothamBold
-studsSliderValue.Text = "30"
+studsSliderValue.Text = "30 studs"
 studsSliderValue.Parent = settingsOverlay
 
 local studsSliderCurrentValue = 60
@@ -941,43 +954,48 @@ local function updateStudsSlider(value)
     studsSliderCurrentValue = math.clamp(value, 0, 100)
     studsSliderFill.Size = UDim2.new(studsSliderCurrentValue / 100, 0, 1, 0)
     local studsDisplay = math.floor((studsSliderCurrentValue / 100) * 50)
-    studsSliderValue.Text = tostring(studsDisplay)
+    studsSliderValue.Text = studsDisplay .. " studs"
     settingsValues["Dash studs"] = studsSliderCurrentValue
 end
 
+-- SLIDER INTERACTION (NO FRAME DRAG, WORKS PERFECTLY)
 studsSlider.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mousePos = InputService:GetMouseLocation()
-        local relativeX = mousePos.X - studsSlider.AbsolutePosition.X
+        isSliding = true
+        settingsOverlay.Draggable = false
+        local relativeX = InputService:GetMouseLocation().X - studsSlider.AbsolutePosition.X
         local percentage = math.clamp(relativeX / studsSlider.AbsoluteSize.X, 0, 1)
         updateStudsSlider(percentage * 100)
     end
 end)
 
+studsSlider.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isSliding = false
+        settingsOverlay.Draggable = false
+    end
+end)
+
 InputService.InputChanged:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-        if studsSlider:IsDescendantOf(gui) then
-            local mousePos = InputService:GetMouseLocation()
-            if mousePos.X >= studsSlider.AbsolutePosition.X and mousePos.X <= studsSlider.AbsolutePosition.X + studsSlider.AbsoluteSize.X then
-                if mousePos.Y >= studsSlider.AbsolutePosition.Y and mousePos.Y <= studsSlider.AbsolutePosition.Y + studsSlider.AbsoluteSize.Y then
-                    local relativeX = mousePos.X - studsSlider.AbsolutePosition.X
-                    local percentage = math.clamp(relativeX / studsSlider.AbsoluteSize.X, 0, 1)
-                    updateStudsSlider(percentage * 100)
-                end
+    if isSliding and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local mousePos = InputService:GetMouseLocation()
+        if mousePos.X >= studsSlider.AbsolutePosition.X and mousePos.X <= studsSlider.AbsolutePosition.X + studsSlider.AbsoluteSize.X then
+            if mousePos.Y >= studsSlider.AbsolutePosition.Y and mousePos.Y <= studsSlider.AbsolutePosition.Y + studsSlider.AbsoluteSize.Y then
+                local relativeX = mousePos.X - studsSlider.AbsolutePosition.X
+                local percentage = math.clamp(relativeX / studsSlider.AbsoluteSize.X, 0, 1)
+                updateStudsSlider(percentage * 100)
             end
         end
     end
 end)
 
-local keybindFrame = Instance.new("Frame")
-keybindFrame.Size = UDim2.new(1, -32, 0, 110)
-keybindFrame.Position = UDim2.new(0, 16, 0, 120)
-keybindFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindFrame.BorderSizePixel = 0
-keybindFrame.Parent = settingsOverlay
-Instance.new("UICorner", keybindFrame).CornerRadius = UDim.new(0, 14)
+local keybindInfoFrame = Instance.new("Frame")
+keybindInfoFrame.Size = UDim2.new(1, -32, 0, 200)
+keybindInfoFrame.Position = UDim2.new(0, 16, 0, 150)
+keybindInfoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keybindInfoFrame.BorderSizePixel = 0
+keybindInfoFrame.Parent = settingsOverlay
+Instance.new("UICorner", keybindInfoFrame).CornerRadius = UDim.new(0, 12)
 
 local keyTitle = Instance.new("TextLabel")
 keyTitle.Size = UDim2.new(1, -20, 0, 30)
@@ -985,32 +1003,183 @@ keyTitle.Position = UDim2.new(0, 10, 0, 8)
 keyTitle.BackgroundTransparency = 1
 keyTitle.Text = "Keybind Info"
 keyTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-keyTitle.TextSize = 18
+keyTitle.TextSize = 16
 keyTitle.Font = Enum.Font.GothamBold
 keyTitle.TextXAlignment = Enum.TextXAlignment.Left
-keyTitle.Parent = keybindFrame
+keyTitle.Parent = keybindInfoFrame
 
 local keyInfo1 = Instance.new("TextLabel")
-keyInfo1.Size = UDim2.new(1, -20, 0, 24)
+keyInfo1.Size = UDim2.new(1, -20, 0, 22)
 keyInfo1.Position = UDim2.new(0, 10, 0, 40)
 keyInfo1.BackgroundTransparency = 1
-keyInfo1.Text = "PC Dash Key: E"
-keyInfo1.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo1.TextSize = 15
+keyInfo1.Text = "E - Dash to nearest target"
+keyInfo1.TextColor3 = Color3.fromRGB(200, 200, 200)
+keyInfo1.TextSize = 13
 keyInfo1.Font = Enum.Font.Gotham
 keyInfo1.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo1.Parent = keybindFrame
+keyInfo1.Parent = keybindInfoFrame
 
 local keyInfo2 = Instance.new("TextLabel")
-keyInfo2.Size = UDim2.new(1, -20, 0, 24)
-keyInfo2.Position = UDim2.new(0, 10, 0, 66)
+keyInfo2.Size = UDim2.new(1, -20, 0, 22)
+keyInfo2.Position = UDim2.new(0, 10, 0, 65)
 keyInfo2.BackgroundTransparency = 1
-keyInfo2.Text = "Mobile: Button"
-keyInfo2.TextColor3 = Color3.fromRGB(205, 205, 205)
-keyInfo2.TextSize = 15
+keyInfo2.Text = "Button - Red dash button"
+keyInfo2.TextColor3 = Color3.fromRGB(200, 200, 200)
+keyInfo2.TextSize = 13
 keyInfo2.Font = Enum.Font.Gotham
 keyInfo2.TextXAlignment = Enum.TextXAlignment.Left
-keyInfo2.Parent = keybindFrame
+keyInfo2.Parent = keybindInfoFrame
+
+local keyInfo3 = Instance.new("TextLabel")
+keyInfo3.Size = UDim2.new(1, -20, 0, 22)
+keyInfo3.Position = UDim2.new(0, 10, 0, 90)
+keyInfo3.BackgroundTransparency = 1
+keyInfo3.Text = "Range: 60 studs"
+keyInfo3.TextColor3 = Color3.fromRGB(200, 200, 200)
+keyInfo3.TextSize = 13
+keyInfo3.Font = Enum.Font.Gotham
+keyInfo3.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo3.Parent = keybindInfoFrame
+
+local keyInfo4 = Instance.new("TextLabel")
+keyInfo4.Size = UDim2.new(1, -20, 0, 22)
+keyInfo4.Position = UDim2.new(0, 10, 0, 115)
+keyInfo4.BackgroundTransparency = 1
+keyInfo4.Text = "Degrees: 160°"
+keyInfo4.TextColor3 = Color3.fromRGB(200, 200, 200)
+keyInfo4.TextSize = 13
+keyInfo4.Font = Enum.Font.Gotham
+keyInfo4.TextXAlignment = Enum.TextXAlignment.Left
+keyInfo4.Parent = keybindInfoFrame
+
+-- KEYBINDS OVERLAY (NEW) - LEFT SIDE, FUNCTIONAL
+local keybindsOverlay = Instance.new("Frame")
+keybindsOverlay.Name = "KeybindsOverlay"
+keybindsOverlay.Size = UDim2.new(0, 320, 0, 400)
+keybindsOverlay.Position = UDim2.new(0, 20, 0.1, 0)
+keybindsOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+keybindsOverlay.BackgroundTransparency = 0
+keybindsOverlay.BorderSizePixel = 0
+keybindsOverlay.Visible = false
+keybindsOverlay.Parent = gui
+keybindsOverlay.Draggable = true
+Instance.new("UICorner", keybindsOverlay).CornerRadius = UDim.new(0, 16)
+
+local keybindsGradient = Instance.new("UIGradient", keybindsOverlay)
+keybindsGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 15)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+keybindsGradient.Rotation = 90
+
+local keybindsTitle = Instance.new("TextLabel")
+keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
+keybindsTitle.Position = UDim2.new(0, 16, 0, 8)
+keybindsTitle.BackgroundTransparency = 1
+keybindsTitle.Text = "Keybinds"
+keybindsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindsTitle.TextSize = 20
+keybindsTitle.Font = Enum.Font.GothamBold
+keybindsTitle.TextXAlignment = Enum.TextXAlignment.Left
+keybindsTitle.Parent = keybindsOverlay
+
+local keybindsCloseBtn = Instance.new("TextButton")
+keybindsCloseBtn.Size = UDim2.new(0, 30, 0, 30)
+keybindsCloseBtn.Position = UDim2.new(1, -40, 0, 8)
+keybindsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+keybindsCloseBtn.Text = "X"
+keybindsCloseBtn.Font = Enum.Font.GothamBold
+keybindsCloseBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+keybindsCloseBtn.TextSize = 18
+keybindsCloseBtn.BorderSizePixel = 0
+keybindsCloseBtn.Style = Enum.ButtonStyle.Custom
+keybindsCloseBtn.Parent = keybindsOverlay
+Instance.new("UICorner", keybindsCloseBtn).CornerRadius = UDim.new(0, 8)
+
+-- Keybind selector for DASH KEY
+local dashKeyLabel = Instance.new("TextLabel")
+dashKeyLabel.Size = UDim2.new(1, -32, 0, 25)
+dashKeyLabel.Position = UDim2.new(0, 16, 0, 60)
+dashKeyLabel.BackgroundTransparency = 1
+dashKeyLabel.Text = "Primary Dash Key:"
+dashKeyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+dashKeyLabel.TextSize = 13
+dashKeyLabel.Font = Enum.Font.Gotham
+dashKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+dashKeyLabel.Parent = keybindsOverlay
+
+local dashKeyButton = Instance.new("TextButton")
+dashKeyButton.Size = UDim2.new(1, -32, 0, 40)
+dashKeyButton.Position = UDim2.new(0, 16, 0, 90)
+dashKeyButton.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+dashKeyButton.BorderSizePixel = 0
+dashKeyButton.Text = "E (Click to change)"
+dashKeyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+dashKeyButton.TextSize = 13
+dashKeyButton.Font = Enum.Font.GothamBold
+dashKeyButton.Style = Enum.ButtonStyle.Custom
+dashKeyButton.Parent = keybindsOverlay
+Instance.new("UICorner", dashKeyButton).CornerRadius = UDim.new(0, 8)
+
+local currentDashKey = Enum.KeyCode.E
+local isWaitingForKey = false
+
+dashKeyButton.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    if not isWaitingForKey then
+        isWaitingForKey = true
+        dashKeyButton.Text = "Press any key..."
+        dashKeyButton.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+        
+        local connection
+        connection = InputService.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                currentDashKey = input.KeyCode
+                dashKeyButton.Text = input.KeyCode.Name .. " (Click to change)"
+                dashKeyButton.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+                isWaitingForKey = false
+                connection:Disconnect()
+            end
+        end)
+        
+        task.delay(5, function()
+            if isWaitingForKey then
+                isWaitingForKey = false
+                dashKeyButton.Text = "E (Click to change)"
+                dashKeyButton.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+                pcall(function() connection:Disconnect() end)
+            end
+        end)
+    end
+end)
+
+-- Update E key input to use customizable key
+InputService.InputBegan:Connect(function(inp, gp)
+    if gp or isDashing or isCharacterDisabled() then return end
+    if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == currentDashKey then
+        local target = getCurrentTarget()
+        if target then
+            performCircularDash(target)
+        end
+    end
+end)
+
+local rangeInfoLabel = Instance.new("TextLabel")
+rangeInfoLabel.Size = UDim2.new(1, -32, 0, 220)
+rangeInfoLabel.Position = UDim2.new(0, 16, 0, 150)
+rangeInfoLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+rangeInfoLabel.BorderSizePixel = 0
+rangeInfoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+rangeInfoLabel.TextSize = 12
+rangeInfoLabel.Font = Enum.Font.Gotham
+rangeInfoLabel.TextWrapped = true
+rangeInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+rangeInfoLabel.TextYAlignment = Enum.TextYAlignment.Top
+rangeInfoLabel.Text = "• Press to set custom dash key\n• Default: E\n• Applies immediately\n\nCurrent Settings:\n• Dash Range: 60 studs\n• Dash Speed: Fast\n• Dash Degrees: 160°\n• Cooldown: 2 seconds\n\nFeatures:\n• Red opponent indicator\n• Smooth circular movement\n• Auto-aim after dash"
+rangeInfoLabel.Parent = keybindsOverlay
+Instance.new("UICorner", rangeInfoLabel).CornerRadius = UDim.new(0, 10)
 
 -- Open lock buttons
 local openButton = Instance.new("TextButton")
@@ -1147,17 +1316,28 @@ end)
 
 settingsBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
+    if keybindsOverlay.Visible then
+        keybindsOverlay.Visible = false
+    end
     settingsOverlay.Visible = true
-    TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
+end)
+
+keybindsBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    if settingsOverlay.Visible then
+        settingsOverlay.Visible = false
+    end
+    keybindsOverlay.Visible = true
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
     uiClickSound:Play()
-    local t = TweenService:Create(settingsOverlay, TweenInfo.new(0.25), {BackgroundTransparency = 1})
-    t:Play()
-    t.Completed:Connect(function()
-        settingsOverlay.Visible = false
-    end)
+    settingsOverlay.Visible = false
+end)
+
+keybindsCloseBtn.MouseButton1Click:Connect(function()
+    uiClickSound:Play()
+    keybindsOverlay.Visible = false
 end)
 
 discordBtn.MouseButton1Click:Connect(function()
@@ -1180,7 +1360,7 @@ ytBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- COOLDOWN NOTIFIER - INSTANT UPDATE (NO DELAY)
+-- COOLDOWN NOTIFIER - INSTANT UPDATE
 local cooldownLabel = Instance.new("TextLabel")
 cooldownLabel.Name = "CooldownLabel"
 cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
@@ -1195,7 +1375,6 @@ cooldownLabel.TextStrokeTransparency = 0.5
 cooldownLabel.Parent = gui
 Instance.new("UICorner", cooldownLabel).CornerRadius = UDim.new(0, 8)
 
--- INSTANT COOLDOWN UPDATE (EVERY FRAME, NO LATENCY)
 local function updateCooldownLabel()
     local remaining = dashRemaining()
     
@@ -1204,11 +1383,11 @@ local function updateCooldownLabel()
         cooldownLabel.Text = string.format("%.1f", displayTime) .. "s"
         
         if displayTime > 1.2 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)  -- RED
+            cooldownLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
         elseif displayTime > 0.5 then
-            cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)  -- YELLOW
+            cooldownLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
         else
-            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- GREEN
+            cooldownLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
         end
     else
         cooldownLabel.Text = "Ready!"
@@ -1233,4 +1412,5 @@ end)
 
 print("subscribe to Waspire")
 
---// END COMPLETE FIXED SNIPPET - ALL 3 ISSUES RESOLVED
+--// END COMPLETE FIXED SNIPPET - ALL 4 ISSUES RESOLVED
+
