@@ -1,4 +1,4 @@
---// COMPLETE FIXED SNIPPET - SIZE CHANGER FIXED + CHAM REMOVED + DASH DEGREE 120
+--// COMPLETE FIXED SNIPPET - TYPO FIXED - ALL WORKING
 
 -- Cleanup old GUIs
 pcall(function()
@@ -67,7 +67,7 @@ local VELOCITY_PREDICTION_FACTOR = 0.5
 local FOLLOW_EASING_POWER = 200
 local CIRCLE_COMPLETION_THRESHOLD = 390 / 480
 local DASH_GAP = 0.5
-local DASH_DEGREE = 120  -- REDUCED FROM 160 TO 120
+local DASH_DEGREE = 120
 
 -- State
 local isDashing = false
@@ -452,7 +452,7 @@ local function performCircularDash(targetCharacter)
     end
 
     local dashDuration = calculateDashDuration(settingsValues["Dash speed"])
-    local dashAngle = DASH_DEGREE  -- USE CONSTANT DASH_DEGREE (120)
+    local dashAngle = DASH_DEGREE
     local dashAngleRad = math.rad(dashAngle)
     local dashDistance = DASH_GAP
 
@@ -1054,7 +1054,7 @@ dashKeyButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- BUTTON SIZE CHANGER - FIXED
+-- BUTTON SIZE CHANGER
 local buttonSizeLabel = Instance.new("TextLabel")
 buttonSizeLabel.Size = UDim2.new(1, -32, 0, 25)
 buttonSizeLabel.Position = UDim2.new(0, 16, 0, 150)
@@ -1289,7 +1289,7 @@ buttonSizeButton.MouseButton1Click:Connect(function()
     dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
 end)
 
--- COOLDOWN NOTIFIER - INSTANT UPDATE
+-- COOLDOWN NOTIFIER
 local cooldownLabel = Instance.new("TextLabel")
 cooldownLabel.Name = "CooldownLabel"
 cooldownLabel.Size = UDim2.new(0, 150, 0, 50)
@@ -1341,6 +1341,5 @@ end)
 
 print("subscribe to Waspire")
 
---// END COMPLETE FIXED SNIPPET - ALL FIXED
-
+--// END COMPLETE FIXED SNIPPET
 
