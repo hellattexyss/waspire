@@ -467,8 +467,8 @@ local function performCircularDash(targetCharacter)
 local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
 local dashAngle
 
-if distance <= 14 then
-    dashAngle = 190
+if distance <= 17 then
+    dashAngle = 240
 else
     dashAngle = 110
 end
@@ -1361,6 +1361,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
