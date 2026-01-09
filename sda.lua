@@ -343,13 +343,18 @@ local function performDashMovement(targetRootPart, dashSpeed)
             local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
             if horizontalDirection.Magnitude <= TARGET_REACH_THRESHOLD then
                 -- Slight speed lerp (smooth acceleration)
+-- smooth speed lerp (distance-based)
 local startSpeed = dashSpeed
-local endSpeed = dashSpeed * 1.15 -- 15% boost
+local endSpeed = dashSpeed * 1.20 -- 20% max boost (safe)
+
 local progress = math.clamp(
     1 - (horizontalDirection.Magnitude / TARGET_REACH_THRESHOLD),
     0,
     1
 )
+
+-- smooth curve (ease-in)
+progress = progress ^ 2
 
 local currentSpeed = startSpeed + (endSpeed - startSpeed) * progress
 linearVelocity.VectorVelocity = horizontalDirection.Unit * currentSpeed
@@ -1361,6 +1366,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
