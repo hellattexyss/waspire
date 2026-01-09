@@ -342,7 +342,17 @@ local function performDashMovement(targetRootPart, dashSpeed)
             local directionToTarget = targetPosition - HumanoidRootPart.Position
             local horizontalDirection = Vector3.new(directionToTarget.X, 0, directionToTarget.Z)
             if horizontalDirection.Magnitude <= TARGET_REACH_THRESHOLD then
-                linearVelocity.VectorVelocity = horizontalDirection.Unit * dashSpeed
+                -- Slight speed lerp (smooth acceleration)
+local startSpeed = dashSpeed
+local endSpeed = dashSpeed * 1.15 -- 15% boost
+local progress = math.clamp(
+    1 - (horizontalDirection.Magnitude / TARGET_REACH_THRESHOLD),
+    0,
+    1
+)
+
+local currentSpeed = startSpeed + (endSpeed - startSpeed) * progress
+linearVelocity.VectorVelocity = horizontalDirection.Unit * currentSpeed
                 pcall(function()
                     if horizontalDirection.Magnitude > 0.001 then
                         HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + horizontalDirection.Unit)
@@ -1351,6 +1361,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
