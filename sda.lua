@@ -495,8 +495,7 @@ end
 local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then
         return
-    end
-    applyDashHighlight(targetCharacter)
+	end
     if not dashReady() then
         return
     end
@@ -533,7 +532,7 @@ local function performCircularDash(targetCharacter)
 local distance = (targetRoot.Position - HumanoidRootPart.Position).Magnitude
 local dashAngle
 
-if distance <= 15 then
+if distance <= 13 then
     dashAngle = 240
 else
     dashAngle = 95
@@ -1450,6 +1449,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
