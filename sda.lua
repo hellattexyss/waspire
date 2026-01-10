@@ -21,6 +21,67 @@ local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
 
+local TweenService = game:GetService("TweenService")
+
+local dashHighlight
+local highlightTweenIn
+local highlightTweenOut
+
+local function applyDashHighlight(targetCharacter)
+    if not targetCharacter then return end
+
+    local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    if not dashHighlight then
+        dashHighlight = Instance.new("Highlight")
+        dashHighlight.FillColor = Color3.fromRGB(255, 60, 60) -- red
+        dashHighlight.OutlineColor = Color3.fromRGB(255, 90, 90)
+        dashHighlight.FillTransparency = 1
+        dashHighlight.OutlineTransparency = 1
+        dashHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    end
+
+    dashHighlight.Adornee = targetCharacter
+    dashHighlight.Parent = targetCharacter
+
+    if highlightTweenOut then highlightTweenOut:Cancel() end
+
+    highlightTweenIn = TweenService:Create(
+        dashHighlight,
+        TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {
+            FillTransparency = 0.35,
+            OutlineTransparency = 0
+        }
+    )
+
+    highlightTweenIn:Play()
+end
+
+local function removeDashHighlight()
+    if not dashHighlight then return end
+
+    if highlightTweenIn then highlightTweenIn:Cancel() end
+
+    highlightTweenOut = TweenService:Create(
+        dashHighlight,
+        TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {
+            FillTransparency = 1,
+            OutlineTransparency = 1
+        }
+    )
+
+    highlightTweenOut:Play()
+    highlightTweenOut.Completed:Once(function()
+        if dashHighlight then
+            dashHighlight.Parent = nil
+            dashHighlight.Adornee = nil
+        end
+    end)
+end
+
 local LocalPlayer = PlayersService.LocalPlayer
 local CurrentCamera = WorkspaceService.CurrentCamera
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -1366,6 +1427,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
