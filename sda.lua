@@ -21,6 +21,70 @@ local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
 
+-- ============ DASH TARGET HIGHLIGHT SYSTEM ============
+
+local dashHighlight
+local highlightTweenIn
+local highlightTweenOut
+
+local highlightSettings = {
+    Color = Color3.fromRGB(255, 0, 0),
+    FillTransparency = 0.75,
+    OutlineTransparency = 0,
+    FadeTime = 0.2
+}
+
+local function applyDashHighlight(targetCharacter)
+    if dashHighlight then return end
+    if not targetCharacter or not targetCharacter:IsA("Model") then return end
+
+    dashHighlight = Instance.new("Highlight")
+    dashHighlight.Name = "DashTargetHighlight"
+    dashHighlight.Adornee = targetCharacter
+    dashHighlight.FillColor = highlightSettings.Color
+    dashHighlight.OutlineColor = highlightSettings.Color
+    dashHighlight.FillTransparency = 1
+    dashHighlight.OutlineTransparency = 1
+    dashHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    dashHighlight.Parent = targetCharacter
+
+    highlightTweenIn = TweenService:Create(
+        dashHighlight,
+        TweenInfo.new(highlightSettings.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {
+            FillTransparency = highlightSettings.FillTransparency,
+            OutlineTransparency = highlightSettings.OutlineTransparency
+        }
+    )
+
+    highlightTweenIn:Play()
+end
+
+local function removeDashHighlight()
+    if not dashHighlight then return end
+
+    if highlightTweenOut then
+        highlightTweenOut:Cancel()
+    end
+
+    highlightTweenOut = TweenService:Create(
+        dashHighlight,
+        TweenInfo.new(highlightSettings.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {
+            FillTransparency = 1,
+            OutlineTransparency = 1
+        }
+    )
+
+    highlightTweenOut:Play()
+    highlightTweenOut.Completed:Once(function()
+        if dashHighlight then
+            dashHighlight:Destroy()
+            dashHighlight = nil
+        end
+    end)
+end
+
 local LocalPlayer = PlayersService.LocalPlayer
 local CurrentCamera = WorkspaceService.CurrentCamera
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -435,7 +499,7 @@ local function performCircularDash(targetCharacter)
     if isDashing or not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") or not HumanoidRootPart then
         return
     end
-
+    applyDashHighlight(targetCharacter)
     if not dashReady() then
         return
     end
@@ -512,6 +576,7 @@ local dashDistance = DASH_GAP
                 task.delay(CAMERA_FOLLOW_DELAY, function()
                     shouldEndDash = true
                     restoreAutoRotate()
+                    removeDashHighlight()
                     lastButtonPressTime = tick()
                     if dashEnded then
                         isDashing = false
@@ -1366,6 +1431,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
