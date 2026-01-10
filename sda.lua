@@ -512,7 +512,8 @@ local function performCircularDash(targetCharacter)
     lastDashTime = tick()
 
     isDashing = true
-    local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
+    applyDashHighlight(targetCharacter)
+	local characterHumanoid = Character:FindFirstChildOfClass("Humanoid")
     local originalAutoRotate = characterHumanoid and characterHumanoid.AutoRotate
     if characterHumanoid then
         isAutoRotateDisabled = true
@@ -1449,6 +1450,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
