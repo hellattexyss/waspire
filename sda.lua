@@ -921,6 +921,70 @@ settingsCloseBtn.Style = Enum.ButtonStyle.Custom
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 8)
 
+local colorButton = Instance.new("TextButton")
+colorButton.Size = UDim2.new(1, -32, 0, 36)
+colorButton.Position = UDim2.new(0, 16, 0, 300) -- adjust Y if needed
+colorButton.BackgroundColor3 = highlightSettings.Color
+colorButton.Text = "Highlight Color"
+colorButton.TextColor3 = Color3.fromRGB(255,255,255)
+colorButton.Font = Enum.Font.GothamBold
+colorButton.TextSize = 14
+colorButton.BorderSizePixel = 0
+colorButton.Parent = settingsOverlay
+Instance.new("UICorner", colorButton).CornerRadius = UDim.new(0, 10)
+
+local colorWheel = Instance.new("ImageLabel")
+colorWheel.Size = UDim2.new(0, 180, 0, 180)
+colorWheel.Position = UDim2.new(0.5, -90, 0, 350)
+colorWheel.Image = "rbxassetid://6020299385"
+colorWheel.Visible = false
+colorWheel.BackgroundTransparency = 1
+colorWheel.Parent = settingsOverlay
+
+local colorInput = Instance.new("Frame")
+colorInput.Size = UDim2.new(1,0,1,0)
+colorInput.BackgroundTransparency = 1
+colorInput.Parent = colorWheel
+
+local UIS = game:GetService("UserInputService")
+
+colorInput.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
+        local size = colorWheel.AbsoluteSize
+
+        local x = math.clamp(pos.X / size.X, 0, 1)
+        local y = math.clamp(pos.Y / size.Y, 0, 1)
+
+        local color = Color3.fromHSV(x, 1, 1 - y)
+        highlightSettings.Color = color
+        colorButton.BackgroundColor3 = color
+    end
+end)
+
+colorButton.MouseButton1Click:Connect(function()
+    colorWheel.Visible = not colorWheel.Visible
+end)
+
+local outlineToggle = Instance.new("TextButton")
+outlineToggle.Size = UDim2.new(1, -32, 0, 36)
+outlineToggle.Position = UDim2.new(0, 16, 0, 540)
+outlineToggle.BackgroundColor3 = Color3.fromRGB(60,60,60)
+outlineToggle.Text = "Outline Highlight: OFF"
+outlineToggle.TextColor3 = Color3.fromRGB(255,255,255)
+outlineToggle.Font = Enum.Font.GothamBold
+outlineToggle.TextSize = 14
+outlineToggle.BorderSizePixel = 0
+outlineToggle.Parent = settingsOverlay
+Instance.new("UICorner", outlineToggle).CornerRadius = UDim.new(0, 10)
+
+outlineToggle.MouseButton1Click:Connect(function()
+    highlightSettings.OutlineOnly = not highlightSettings.OutlineOnly
+    outlineToggle.Text = highlightSettings.OutlineOnly
+        and "Outline Highlight: ON"
+        or "Outline Highlight: OFF"
+end)
+
 -- DASH DISTANCE BUTTON
 local dashDistanceLabel = Instance.new("TextLabel")
 dashDistanceLabel.Size = UDim2.new(1, -32, 0, 25)
@@ -1435,6 +1499,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
