@@ -21,7 +21,11 @@ local WorkspaceService = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
 
-local TweenService = game:GetService("TweenService")
+-- ===== DASH HIGHLIGHT SETTINGS =====
+local highlightSettings = {
+    Color = Color3.fromRGB(255, 0, 0),
+    OutlineOnly = false
+}
 
 local dashHighlight
 local highlightTweenIn
@@ -1432,6 +1436,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
