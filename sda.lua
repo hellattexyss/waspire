@@ -814,6 +814,147 @@ settingsBtn.Style = Enum.ButtonStyle.Custom
 settingsBtn.Parent = mainFrame
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
+-- ===============================
+-- DASH HIGHLIGHT CUSTOMIZER
+-- ===============================
+
+local pickerFrame = Instance.new("Frame")
+pickerFrame.Size = UDim2.new(1, -30, 0, 150)
+pickerFrame.Position = UDim2.new(0, 15, 0, 110)
+pickerFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+pickerFrame.BorderSizePixel = 0
+pickerFrame.Parent = settingsOverlay
+Instance.new("UICorner", pickerFrame).CornerRadius = UDim.new(0, 14)
+
+local pickerTitle = Instance.new("TextLabel")
+pickerTitle.Size = UDim2.new(1, -12, 0, 22)
+pickerTitle.Position = UDim2.new(0, 6, 0, 6)
+pickerTitle.BackgroundTransparency = 1
+pickerTitle.Text = "Dash Highlight"
+pickerTitle.Font = Enum.Font.GothamBold
+pickerTitle.TextSize = 14
+pickerTitle.TextColor3 = Color3.new(1,1,1)
+pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
+pickerTitle.Parent = pickerFrame
+
+-- COLOR PREVIEW BUTTON
+local colorPreview = Instance.new("TextButton")
+colorPreview.Size = UDim2.new(0, 120, 0, 36)
+colorPreview.Position = UDim2.new(0, 10, 0, 36)
+colorPreview.BackgroundColor3 = highlightSettings.Color
+colorPreview.Text = "Pick Color"
+colorPreview.TextColor3 = Color3.new(1,1,1)
+colorPreview.Font = Enum.Font.GothamBold
+colorPreview.TextSize = 13
+colorPreview.BorderSizePixel = 0
+colorPreview.Parent = pickerFrame
+Instance.new("UICorner", colorPreview).CornerRadius = UDim.new(0, 8)
+
+-- COLOR WHEEL
+local colorWheel = Instance.new("ImageLabel")
+colorWheel.Size = UDim2.new(0, 110, 0, 110)
+colorWheel.Position = UDim2.new(0, 10, 0, 78)
+colorWheel.Image = "rbxassetid://6020299385"
+colorWheel.BackgroundTransparency = 1
+colorWheel.Visible = false
+colorWheel.Parent = pickerFrame
+
+local UIS = game:GetService("UserInputService")
+
+colorWheel.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+    local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
+    local size = colorWheel.AbsoluteSize
+
+    local x = math.clamp(pos.X / size.X, 0, 1)
+    local y = math.clamp(pos.Y / size.Y, 0, 1)
+
+    local color = Color3.fromHSV(x, 1, 1 - y)
+    highlightSettings.Color = color
+    colorPreview.BackgroundColor3 = color
+end)
+
+colorPreview.MouseButton1Click:Connect(function()
+    colorWheel.Visible = not colorWheel.Visible
+end)
+
+-- OUTLINE TOGGLE
+local outlineBtn = Instance.new("TextButton")
+outlineBtn.Size = UDim2.new(0, 170, 0, 34)
+outlineBtn.Position = UDim2.new(0, 140, 0, 36)
+outlineBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+outlineBtn.TextColor3 = Color3.new(1,1,1)
+outlineBtn.Font = Enum.Font.GothamBold
+outlineBtn.TextSize = 13
+outlineBtn.BorderSizePixel = 0
+outlineBtn.Text = "Outline Only: OFF"
+outlineBtn.Parent = pickerFrame
+Instance.new("UICorner", outlineBtn).CornerRadius = UDim.new(0, 8)
+
+outlineBtn.MouseButton1Click:Connect(function()
+    highlightSettings.OutlineOnly = not highlightSettings.OutlineOnly
+    outlineBtn.Text = highlightSettings.OutlineOnly
+        and "Outline Only: ON"
+        or "Outline Only: OFF"
+end)
+
+local pickerTitle = Instance.new("TextLabel")
+pickerTitle.Size = UDim2.new(1, -12, 0, 22)
+pickerTitle.Position = UDim2.new(0, 6, 0, 6)
+pickerTitle.BackgroundTransparency = 1
+pickerTitle.Text = "Dash Highlight"
+pickerTitle.Font = Enum.Font.GothamBold
+pickerTitle.TextSize = 14
+pickerTitle.TextColor3 = Color3.new(1,1,1)
+pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
+pickerTitle.Parent = pickerFrame
+
+-- COLOR PREVIEW BUTTON
+local colorPreview = Instance.new("TextButton")
+colorPreview.Size = UDim2.new(0, 120, 0, 36)
+colorPreview.Position = UDim2.new(0, 10, 0, 36)
+colorPreview.BackgroundColor3 = highlightSettings.Color
+colorPreview.Text = "Pick Color"
+colorPreview.TextColor3 = Color3.new(1,1,1)
+colorPreview.Font = Enum.Font.GothamBold
+colorPreview.TextSize = 13
+colorPreview.BorderSizePixel = 0
+colorPreview.Parent = pickerFrame
+Instance.new("UICorner", colorPreview).CornerRadius = UDim.new(0, 8)
+
+-- COLOR WHEEL
+local colorWheel = Instance.new("ImageLabel")
+colorWheel.Size = UDim2.new(0, 110, 0, 110)
+colorWheel.Position = UDim2.new(0, 10, 0, 78)
+colorWheel.Image = "rbxassetid://6020299385"
+colorWheel.BackgroundTransparency = 1
+colorWheel.Visible = false
+colorWheel.Parent = pickerFrame
+
+local UIS = game:GetService("UserInputService")
+
+colorWheel.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+    local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
+    local size = colorWheel.AbsoluteSize
+
+    local x = math.clamp(pos.X / size.X, 0, 1)
+    local y = math.clamp(pos.Y / size.Y, 0, 1)
+
+    local color = Color3.fromHSV(x, 1, 1 - y)
+    highlightSettings.Color = color
+    colorPreview.BackgroundColor3 = color
+end)
+
+colorPreview.MouseButton1Click:Connect(function()
+    colorWheel.Visible = not colorWheel.Visible
+end)
+
+-- OUTLINE TOGGLE
+local outlineBtn = Instance.new("
+
 -- KEYBINDS BUTTON
 local keybindsBtn = Instance.new("TextButton")
 keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
@@ -914,70 +1055,6 @@ settingsCloseBtn.BorderSizePixel = 0
 settingsCloseBtn.Style = Enum.ButtonStyle.Custom
 settingsCloseBtn.Parent = settingsOverlay
 Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 8)
-
-local colorButton = Instance.new("TextButton")
-colorButton.Size = UDim2.new(1, -32, 0, 36)
-colorButton.Position = UDim2.new(0, 16, 0, 300) -- adjust Y if needed
-colorButton.BackgroundColor3 = highlightSettings.Color
-colorButton.Text = "Highlight Color"
-colorButton.TextColor3 = Color3.fromRGB(255,255,255)
-colorButton.Font = Enum.Font.GothamBold
-colorButton.TextSize = 14
-colorButton.BorderSizePixel = 0
-colorButton.Parent = settingsOverlay
-Instance.new("UICorner", colorButton).CornerRadius = UDim.new(0, 10)
-
-local colorWheel = Instance.new("ImageLabel")
-colorWheel.Size = UDim2.new(0, 180, 0, 180)
-colorWheel.Position = UDim2.new(0.5, -90, 0, 350)
-colorWheel.Image = "rbxassetid://6020299385"
-colorWheel.Visible = false
-colorWheel.BackgroundTransparency = 1
-colorWheel.Parent = settingsOverlay
-
-local colorInput = Instance.new("Frame")
-colorInput.Size = UDim2.new(1,0,1,0)
-colorInput.BackgroundTransparency = 1
-colorInput.Parent = colorWheel
-
-local UIS = game:GetService("UserInputService")
-
-colorInput.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
-        local size = colorWheel.AbsoluteSize
-
-        local x = math.clamp(pos.X / size.X, 0, 1)
-        local y = math.clamp(pos.Y / size.Y, 0, 1)
-
-        local color = Color3.fromHSV(x, 1, 1 - y)
-        highlightSettings.Color = color
-        colorButton.BackgroundColor3 = color
-    end
-end)
-
-colorButton.MouseButton1Click:Connect(function()
-    colorWheel.Visible = not colorWheel.Visible
-end)
-
-local outlineToggle = Instance.new("TextButton")
-outlineToggle.Size = UDim2.new(1, -32, 0, 36)
-outlineToggle.Position = UDim2.new(0, 16, 0, 540)
-outlineToggle.BackgroundColor3 = Color3.fromRGB(60,60,60)
-outlineToggle.Text = "Outline Highlight: OFF"
-outlineToggle.TextColor3 = Color3.fromRGB(255,255,255)
-outlineToggle.Font = Enum.Font.GothamBold
-outlineToggle.TextSize = 14
-outlineToggle.BorderSizePixel = 0
-outlineToggle.Parent = settingsOverlay
-Instance.new("UICorner", outlineToggle).CornerRadius = UDim.new(0, 10)
-
-outlineToggle.MouseButton1Click:Connect(function()
-    highlightSettings.OutlineOnly = not highlightSettings.OutlineOnly
-    outlineToggle.Text = highlightSettings.OutlineOnly
-        and "Outline Highlight: ON"
-        or "Outline Highlight: OFF"
-end)
 
 -- DASH DISTANCE BUTTON
 local dashDistanceLabel = Instance.new("TextLabel")
@@ -1412,6 +1489,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
