@@ -23,8 +23,8 @@ local Lighting = game:GetService("Lighting")
 
 -- ===== DASH HIGHLIGHT SETTINGS =====
 local highlightSettings = {
-    Color = Color3.fromRGB(255, 0, 0),
-    OutlineOnly = false
+	Color = Color3.fromRGB(255, 0, 0),
+	OutlineOnly = false
 }
 
 local dashHighlight
@@ -32,57 +32,51 @@ local highlightTweenIn
 local highlightTweenOut
 
 local function applyDashHighlight(character)
-    if not character then return end
-    removeDashHighlight()
+	if not character then return end
+	removeDashHighlight()
 
-    dashHighlight = Instance.new("Highlight")
-    dashHighlight.Adornee = character
-    dashHighlight.Parent = character
+	dashHighlight = Instance.new("Highlight")
+	dashHighlight.Adornee = character
+	dashHighlight.Parent = character
+	dashHighlight.FillColor = highlightSettings.Color
+	dashHighlight.OutlineColor = highlightSettings.Color
 
-    dashHighlight.FillColor = highlightSettings.Color
-    dashHighlight.OutlineColor = highlightSettings.Color
+	if highlightSettings.OutlineOnly then
+		dashHighlight.FillTransparency = 1
+		dashHighlight.OutlineTransparency = 1
+	else
+		dashHighlight.FillTransparency = 1
+		dashHighlight.OutlineTransparency = 1
+	end
 
-    if highlightSettings.OutlineOnly then
-        dashHighlight.FillTransparency = 1
-        dashHighlight.OutlineTransparency = 1
-    else
-        dashHighlight.FillTransparency = 1
-        dashHighlight.OutlineTransparency = 1
-    end
+	highlightTweenIn = TweenService:Create(
+		dashHighlight,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		highlightSettings.OutlineOnly
+			and { OutlineTransparency = 0 }
+			or { FillTransparency = 0.35, OutlineTransparency = 0 }
+	)
 
-    highlightTweenIn = TweenService:Create(
-        dashHighlight,
-        TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        highlightSettings.OutlineOnly
-            and { OutlineTransparency = 0 }
-            or { FillTransparency = 0.35, OutlineTransparency = 0 }
-    )
-
-    highlightTweenIn:Play()
+	highlightTweenIn:Play()
 end
-local function removeDashHighlight()
-    if not dashHighlight then return end
 
-    if highlightTweenIn then
-        highlightTweenIn:Cancel()
-    end
+function removeDashHighlight()
+	if not dashHighlight then return end
+	if highlightTweenIn then highlightTweenIn:Cancel() end
 
-    highlightTweenOut = TweenService:Create(
-        dashHighlight,
-        TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {
-            FillTransparency = 1,
-            OutlineTransparency = 1
-        }
-    )
+	highlightTweenOut = TweenService:Create(
+		dashHighlight,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ FillTransparency = 1, OutlineTransparency = 1 }
+	)
 
-    highlightTweenOut:Play()
-    highlightTweenOut.Completed:Once(function()
-        if dashHighlight then
-            dashHighlight:Destroy()
-            dashHighlight = nil
-        end
-    end)
+	highlightTweenOut:Play()
+	highlightTweenOut.Completed:Once(function()
+		if dashHighlight then
+			dashHighlight:Destroy()
+			dashHighlight = nil
+		end
+	end)
 end
 
 local LocalPlayer = PlayersService.LocalPlayer
@@ -1499,6 +1493,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
