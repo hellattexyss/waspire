@@ -35,29 +35,26 @@ local highlightSettings = {
 }
 
 local function applyDashHighlight(targetCharacter)
-    if dashHighlight then return end
-    if not targetCharacter or not targetCharacter:IsA("Model") then return end
+	if dashHighlight then return end
+	if not targetCharacter or not targetCharacter:IsA("Model") then return end
 
-    dashHighlight = Instance.new("Highlight")
-    dashHighlight.Name = "DashTargetHighlight"
-    dashHighlight.Adornee = targetCharacter
-    dashHighlight.FillColor = highlightSettings.Color
-    dashHighlight.OutlineColor = highlightSettings.Color
-    dashHighlight.FillTransparency = 1
-    dashHighlight.OutlineTransparency = 1
-    dashHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    dashHighlight.Parent = targetCharacter
+	local h = Instance.new("Highlight")
+	h.Name = "DashTargetHighlight"
+	h.Adornee = targetCharacter
+	h.FillColor = highlightSettings.Color
+	h.OutlineColor = highlightSettings.Color
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 
-    highlightTweenIn = TweenService:Create(
-        dashHighlight,
-        TweenInfo.new(highlightSettings.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {
-            FillTransparency = highlightSettings.FillTransparency,
-            OutlineTransparency = highlightSettings.OutlineTransparency
-        }
-    )
+	if highlightSettings.OutlineOnly then
+		h.FillTransparency = 1
+		h.OutlineTransparency = 0
+	else
+		h.FillTransparency = highlightSettings.FillTransparency or 0.35
+		h.OutlineTransparency = highlightSettings.OutlineTransparency or 0
+	end
 
-    highlightTweenIn:Play()
+	h.Parent = targetCharacter
+	dashHighlight = h
 end
 
 local function removeDashHighlight()
@@ -1453,6 +1450,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
