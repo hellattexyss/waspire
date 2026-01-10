@@ -955,91 +955,6 @@ dashDistanceButton.MouseButton1Click:Connect(function()
     dashDistanceButton.Text = settingsValues["Dash distance"] .. " studs (Click to increase)"
 end)
 
-local infoFrame = Instance.new("Frame")
-infoFrame.Size = UDim2.new(1, -32, 0, 200)
-infoFrame.Position = UDim2.new(0, 16, 0, 150)
-infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-infoFrame.BorderSizePixel = 0
-infoFrame.Parent = settingsOverlay
-Instance.new("UICorner", infoFrame).CornerRadius = UDim.new(0, 12)
-
-local infoTitle = Instance.new("TextLabel")
-infoTitle.Size = UDim2.new(1, -20, 0, 30)
-infoTitle.Position = UDim2.new(0, 10, 0, 8)
-infoTitle.BackgroundTransparency = 1
-infoTitle.Text = "How it Works:"
-infoTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-infoTitle.TextSize = 14
-infoTitle.Font = Enum.Font.GothamBold
-infoTitle.TextXAlignment = Enum.TextXAlignment.Left
-infoTitle.Parent = infoFrame
-
-local infoText1 = Instance.new("TextLabel")
-infoText1.Size = UDim2.new(1, -20, 0, 20)
-infoText1.Position = UDim2.new(0, 10, 0, 40)
-infoText1.BackgroundTransparency = 1
-infoText1.Text = "• Select your target range above."
-infoText1.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText1.TextSize = 12
-infoText1.Font = Enum.Font.Gotham
-infoText1.TextXAlignment = Enum.TextXAlignment.Left
-infoText1.Parent = infoFrame
-
-local infoText2 = Instance.new("TextLabel")
-infoText2.Size = UDim2.new(1, -20, 0, 20)
-infoText2.Position = UDim2.new(0, 10, 0, 62)
-infoText2.BackgroundTransparency = 1
-infoText2.Text = "• 25 studs is suggested."
-infoText2.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText2.TextSize = 12
-infoText2.Font = Enum.Font.Gotham
-infoText2.TextXAlignment = Enum.TextXAlignment.Left
-infoText2.Parent = infoFrame
-
-local infoText3 = Instance.new("TextLabel")
-infoText3.Size = UDim2.new(1, -20, 0, 20)
-infoText3.Position = UDim2.new(0, 10, 0, 84)
-infoText3.BackgroundTransparency = 1
-infoText3.Text = "• Press E or the mobile button to dash."
-infoText3.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText3.TextSize = 12
-infoText3.Font = Enum.Font.Gotham
-infoText3.TextXAlignment = Enum.TextXAlignment.Left
-infoText3.Parent = infoFrame
-
-local infoText4 = Instance.new("TextLabel")
-infoText4.Size = UDim2.new(1, -20, 0, 20)
-infoText4.Position = UDim2.new(0, 10, 0, 106)
-infoText4.BackgroundTransparency = 1
-infoText4.Text = "• Added cooldown to the dash :)"
-infoText4.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText4.TextSize = 12
-infoText4.Font = Enum.Font.Gotham
-infoText4.TextXAlignment = Enum.TextXAlignment.Left
-infoText4.Parent = infoFrame
-
-local infoText5 = Instance.new("TextLabel")
-infoText5.Size = UDim2.new(1, -20, 0, 20)
-infoText5.Position = UDim2.new(0, 10, 0, 128)
-infoText5.BackgroundTransparency = 1
-infoText5.Text = "• Gap: 0.5 studs (distance from target)"
-infoText5.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText5.TextSize = 12
-infoText5.Font = Enum.Font.Gotham
-infoText5.TextXAlignment = Enum.TextXAlignment.Left
-infoText5.Parent = infoFrame
-
-local infoText6 = Instance.new("TextLabel")
-infoText6.Size = UDim2.new(1, -20, 0, 20)
-infoText6.Position = UDim2.new(0, 10, 0, 150)
-infoText6.BackgroundTransparency = 1
-infoText6.Text = "• Dash degree: 120 (smooth arc)"
-infoText6.TextColor3 = Color3.fromRGB(200, 200, 200)
-infoText6.TextSize = 12
-infoText6.Font = Enum.Font.Gotham
-infoText6.TextXAlignment = Enum.TextXAlignment.Left
-infoText6.Parent = infoFrame
-
 -- KEYBINDS OVERLAY
 local keybindsOverlay = Instance.new("Frame")
 keybindsOverlay.Name = "KeybindsOverlay"
@@ -1431,6 +1346,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
