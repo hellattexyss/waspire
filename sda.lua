@@ -801,7 +801,7 @@ Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
 -- Settings button
 local settingsBtn = Instance.new("TextButton")
-settingsBtn.Size = UDim2.new(0, 36, 0, 36)
+settingsBtn.Size = UDim2.new(0, 32, 0, 32)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
 settingsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 settingsBtn.Text = "⚙️"
@@ -815,7 +815,7 @@ Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
 -- KEYBINDS BUTTON
 local keybindsBtn = Instance.new("TextButton")
-keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
+keybindsBtn.Size = UDim2.new(0, 32, 0, 32)
 keybindsBtn.Position = UDim2.new(0, 55, 1, -46)
 keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 keybindsBtn.Text = "⌨️"
@@ -826,6 +826,20 @@ keybindsBtn.BorderSizePixel = 0
 keybindsBtn.Style = Enum.ButtonStyle.Custom
 keybindsBtn.Parent = mainFrame
 Instance.new("UICorner", keybindsBtn).CornerRadius = UDim.new(1, 0)
+
+-- COLOR PICKER BUTTON
+local colorBtn = Instance.new("TextButton")
+colorBtn.Size = UDim2.new(0, 32, 0, 32)
+colorBtn.Position = UDim2.new(0, 92, 1, -44)
+colorBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+colorBtn.Text = "🎨"
+colorBtn.Font = Enum.Font.GothamBold
+colorBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+colorBtn.TextSize = 16
+colorBtn.BorderSizePixel = 0
+colorBtn.Style = Enum.ButtonStyle.Custom
+colorBtn.Parent = mainFrame
+Instance.new("UICorner", colorBtn).CornerRadius = UDim.new(1, 0)
 
 local discordBtn = Instance.new("TextButton")
 discordBtn.Name = "DiscordButton"
@@ -882,6 +896,7 @@ settingsOverlay.Parent = gui
 settingsOverlay.Draggable = false
 Instance.new("UICorner", settingsOverlay).CornerRadius = UDim.new(0, 16)
 
+-- COLOR OVERLAY
 local overlayGradient = Instance.new("UIGradient", settingsOverlay)
 overlayGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
@@ -889,6 +904,23 @@ overlayGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
 })
 overlayGradient.Rotation = 90
+
+-- COLOR OVERLAY
+local colorOverlay = Instance.new("Frame")
+colorOverlay.Size = UDim2.new(0, 320, 0, 260)
+colorOverlay.Position = UDim2.new(0, 20, 0.1, 0)
+colorOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+colorOverlay.BorderSizePixel = 0
+colorOverlay.Visible = false
+colorOverlay.Parent = gui
+Instance.new("UICorner", colorOverlay).CornerRadius = UDim.new(0, 16)
+
+local colorGradient = Instance.new("UIGradient", colorOverlay)
+colorGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+colorGradient.Rotation = 90
 
 local settingsTitle = Instance.new("TextLabel")
 settingsTitle.Size = UDim2.new(1, -60, 0, 40)
@@ -1457,6 +1489,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
