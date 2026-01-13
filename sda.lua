@@ -1028,13 +1028,20 @@ UIS.InputChanged:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseMovement
 	and input.UserInputType ~= Enum.UserInputType.Touch then return end
 
-	local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
-	local size = colorWheel.AbsoluteSize
+	local mousePos = UIS:GetMouseLocation()
+	local absPos = colorWheel.AbsolutePosition
+	local absSize = colorWheel.AbsoluteSize
 
-	local x = math.clamp(pos.X / size.X, 0, 1)
-	local y = math.clamp(pos.Y / size.Y, 0, 1)
+	local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+	local relY = math.clamp((mousePos.Y - absPos.Y) / absSize.Y, 0, 1)
 
-	local color = Color3.fromHSV(x, 1, 1 - y)
+	-- PROPER HSV
+	local hue = relX
+	local saturation = 1 - relY
+	local value = 1
+
+	local color = Color3.fromHSV(hue, saturation, value)
+
 	highlightSettings.Color = color
 	colorPreview.BackgroundColor3 = color
 end)
@@ -1450,6 +1457,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
