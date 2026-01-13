@@ -801,7 +801,7 @@ Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
 -- Settings button
 local settingsBtn = Instance.new("TextButton")
-settingsBtn.Size = UDim2.new(0, 36, 0, 36)
+settingsBtn.Size = UDim2.new(0, 32, 0, 32)
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
 settingsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 settingsBtn.Text = "⚙️"
@@ -815,7 +815,7 @@ Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
 -- KEYBINDS BUTTON
 local keybindsBtn = Instance.new("TextButton")
-keybindsBtn.Size = UDim2.new(0, 36, 0, 36)
+keybindsBtn.Size = UDim2.new(0, 32, 0, 32)
 keybindsBtn.Position = UDim2.new(0, 55, 1, -46)
 keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 keybindsBtn.Text = "⌨️"
@@ -826,6 +826,20 @@ keybindsBtn.BorderSizePixel = 0
 keybindsBtn.Style = Enum.ButtonStyle.Custom
 keybindsBtn.Parent = mainFrame
 Instance.new("UICorner", keybindsBtn).CornerRadius = UDim.new(1, 0)
+
+-- COLOR PICKER BUTTON
+local colorBtn = Instance.new("TextButton")
+colorBtn.Size = UDim2.new(0, 32, 0, 32)
+colorBtn.Position = UDim2.new(0, 92, 1, -44)
+colorBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+colorBtn.Text = "🎨"
+colorBtn.Font = Enum.Font.GothamBold
+colorBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+colorBtn.TextSize = 16
+colorBtn.BorderSizePixel = 0
+colorBtn.Style = Enum.ButtonStyle.Custom
+colorBtn.Parent = mainFrame
+Instance.new("UICorner", colorBtn).CornerRadius = UDim.new(1, 0)
 
 local discordBtn = Instance.new("TextButton")
 discordBtn.Name = "DiscordButton"
@@ -963,10 +977,10 @@ local highlightSettings = highlightSettings or {
 
 local pickerFrame = Instance.new("Frame")
 pickerFrame.Size = UDim2.new(1, -30, 0, 150)
-pickerFrame.Position = UDim2.new(0, 15, 0, 110)
 pickerFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 pickerFrame.BorderSizePixel = 0
-pickerFrame.Parent = settingsOverlay
+pickerFrame.Parent = colorOverlay
+pickerFrame.Position = UDim2.new(0, 15, 0, 60)
 Instance.new("UICorner", pickerFrame).CornerRadius = UDim.new(0, 12)
 
 local pickerTitle = Instance.new("TextLabel")
@@ -1028,17 +1042,23 @@ UIS.InputChanged:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseMovement
 	and input.UserInputType ~= Enum.UserInputType.Touch then return end
 
-	local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
-	local size = colorWheel.AbsoluteSize
+	local mousePos = UIS:GetMouseLocation()
+	local absPos = colorWheel.AbsolutePosition
+	local absSize = colorWheel.AbsoluteSize
 
-	local x = math.clamp(pos.X / size.X, 0, 1)
-	local y = math.clamp(pos.Y / size.Y, 0, 1)
+	local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+	local relY = math.clamp((mousePos.Y - absPos.Y) / absSize.Y, 0, 1)
 
-	local color = Color3.fromHSV(x, 1, 1 - y)
+	-- PROPER HSV
+	local hue = relX
+	local saturation = 1 - relY
+	local value = 1
+
+	local color = Color3.fromHSV(hue, saturation, value)
+
 	highlightSettings.Color = color
 	colorPreview.BackgroundColor3 = color
 end)
-
 -- Outline toggle
 local outlineBtn = Instance.new("TextButton")
 outlineBtn.Size = UDim2.new(0, 160, 0, 32)
@@ -1079,6 +1099,23 @@ keybindsGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
 })
 keybindsGradient.Rotation = 90
+
+-- COLOR OVERLAY
+local colorOverlay = Instance.new("Frame")
+colorOverlay.Size = UDim2.new(0, 320, 0, 260)
+colorOverlay.Position = UDim2.new(0, 20, 0.1, 0)
+colorOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+colorOverlay.BorderSizePixel = 0
+colorOverlay.Visible = false
+colorOverlay.Parent = gui
+Instance.new("UICorner", colorOverlay).CornerRadius = UDim.new(0, 16)
+
+local colorGradient = Instance.new("UIGradient", colorOverlay)
+colorGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 5, 5)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+})
+colorGradient.Rotation = 90
 
 local keybindsTitle = Instance.new("TextLabel")
 keybindsTitle.Size = UDim2.new(1, -60, 0, 40)
@@ -1350,13 +1387,11 @@ keybindsBtn.MouseButton1Click:Connect(function()
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    settingsOverlay.Visible = false
+	settingsOverlay.Visible = false
 end)
 
 keybindsCloseBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    keybindsOverlay.Visible = false
+	keybindsOverlay.Visible = false
 end)
 
 discordBtn.MouseButton1Click:Connect(function()
@@ -1395,6 +1430,13 @@ buttonSizeButton.MouseButton1Click:Connect(function()
     -- Update icon size and position
     dashIcon.Size = UDim2.new(0, redButtonSize - 15, 0, redButtonSize - 15)
     dashIcon.Position = UDim2.new(0.5, -(redButtonSize - 15) / 2, 0.5, -(redButtonSize - 15) / 2)
+end)
+
+colorBtn.MouseButton1Click:Connect(function()
+	uiClickSound:Play()
+	settingsOverlay.Visible = false
+	keybindsOverlay.Visible = false
+	colorOverlay.Visible = true
 end)
 
 -- COOLDOWN NOTIFIER
@@ -1450,6 +1492,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
