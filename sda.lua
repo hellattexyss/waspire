@@ -799,9 +799,12 @@ minimizeBtn.Style = Enum.ButtonStyle.Custom
 minimizeBtn.Parent = mainFrame
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 10)
 
+local btnSize = UDim2.new(0, 44, 0, 44)
+local yPos = 0.05
+
 -- Settings button
 local settingsBtn = Instance.new("TextButton")
-settingsBtn.Size = UDim2.new(0, 32, 0, 32)
+settingsBtn.Size = btnSize
 settingsBtn.Position = UDim2.new(0, 10, 1, -46)
 settingsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 settingsBtn.Text = "⚙️"
@@ -815,7 +818,7 @@ Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(1, 0)
 
 -- KEYBINDS BUTTON
 local keybindsBtn = Instance.new("TextButton")
-keybindsBtn.Size = UDim2.new(0, 32, 0, 32)
+keybindsBtn.Size = btnSize
 keybindsBtn.Position = UDim2.new(0, 55, 1, -46)
 keybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 keybindsBtn.Text = "⌨️"
@@ -829,7 +832,7 @@ Instance.new("UICorner", keybindsBtn).CornerRadius = UDim.new(1, 0)
 
 -- COLOR PICKER BUTTON
 local colorBtn = Instance.new("TextButton")
-colorBtn.Size = UDim2.new(0, 32, 0, 32)
+colorBtn.Size = btnSize
 colorBtn.Position = UDim2.new(0, 92, 1, -44)
 colorBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 colorBtn.Text = "🎨"
@@ -980,7 +983,6 @@ pickerFrame.Size = UDim2.new(1, -30, 0, 150)
 pickerFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 pickerFrame.BorderSizePixel = 0
 pickerFrame.Parent = colorOverlay
-pickerFrame.Position = UDim2.new(0, 15, 0, 60)
 Instance.new("UICorner", pickerFrame).CornerRadius = UDim.new(0, 12)
 
 local pickerTitle = Instance.new("TextLabel")
@@ -1037,27 +1039,24 @@ colorWheel.InputEnded:Connect(function(input)
 	end
 end)
 
-UIS.InputChanged:Connect(function(input)
-	if not dragging or not colorWheel.Visible then return end
-	if input.UserInputType ~= Enum.UserInputType.MouseMovement
-	and input.UserInputType ~= Enum.UserInputType.Touch then return end
+local function updateColor(input)
+	local pos = input.Position - colorWheel.AbsolutePosition
+	local center = colorWheel.AbsoluteSize / 2
+	local offset = pos - center
+	local dist = math.min(offset.Magnitude, center.X)
 
-	local mousePos = UIS:GetMouseLocation()
-	local absPos = colorWheel.AbsolutePosition
-	local absSize = colorWheel.AbsoluteSize
+	local hue = (math.atan2(offset.Y, offset.X) / (2 * math.pi)) % 1
+	local sat = dist / center.X
 
-	local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
-	local relY = math.clamp((mousePos.Y - absPos.Y) / absSize.Y, 0, 1)
+	local col = Color3.fromHSV(hue, sat, 1)
+	highlightSettings.Color = col
+	colorPreview.BackgroundColor3 = col
+end
 
-	-- PROPER HSV
-	local hue = relX
-	local saturation = 1 - relY
-	local value = 1
-
-	local color = Color3.fromHSV(hue, saturation, value)
-
-	highlightSettings.Color = color
-	colorPreview.BackgroundColor3 = color
+colorWheel.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		updateColor(input)
+	end
 end)
 -- Outline toggle
 local outlineBtn = Instance.new("TextButton")
@@ -1102,11 +1101,13 @@ keybindsGradient.Rotation = 90
 
 -- COLOR OVERLAY
 local colorOverlay = Instance.new("Frame")
-colorOverlay.Size = UDim2.new(0, 320, 0, 260)
-colorOverlay.Position = UDim2.new(0, 20, 0.1, 0)
+colorOverlay.Visible = false
+colorOverlay.AnchorPoint = Vector2.new(0.5, 0.5)
+colorOverlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+colorOverlay.Size = UDim2.new(0, 360, 0, 280)
+colorOverlay.ZIndex = 20
 colorOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 colorOverlay.BorderSizePixel = 0
-colorOverlay.Visible = false
 colorOverlay.Parent = gui
 Instance.new("UICorner", colorOverlay).CornerRadius = UDim.new(0, 16)
 
@@ -1371,19 +1372,15 @@ openButton.MouseButton1Click:Connect(function()
 end)
 
 settingsBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if keybindsOverlay.Visible then
-        keybindsOverlay.Visible = false
-    end
-    settingsOverlay.Visible = true
+	settingsOverlay.Visible = true
+	keybindsOverlay.Visible = false
+	colorOverlay.Visible = false
 end)
 
 keybindsBtn.MouseButton1Click:Connect(function()
-    uiClickSound:Play()
-    if settingsOverlay.Visible then
-        settingsOverlay.Visible = false
-    end
-    keybindsOverlay.Visible = true
+	settingsOverlay.Visible = false
+	keybindsOverlay.Visible = true
+	colorOverlay.Visible = false
 end)
 
 settingsCloseBtn.MouseButton1Click:Connect(function()
@@ -1433,7 +1430,6 @@ buttonSizeButton.MouseButton1Click:Connect(function()
 end)
 
 colorBtn.MouseButton1Click:Connect(function()
-	uiClickSound:Play()
 	settingsOverlay.Visible = false
 	keybindsOverlay.Visible = false
 	colorOverlay.Visible = true
@@ -1492,6 +1488,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
