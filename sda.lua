@@ -1026,21 +1026,33 @@ colorWheel.InputEnded:Connect(function(input)
 end)
 
 -- Proper wheel math (keeps light colors)
-local dx = pos.X - size.X / 2
-local dy = pos.Y - size.Y / 2
-local dist = math.sqrt(dx*dx + dy*dy)
+UIS.InputChanged:Connect(function(input)
+	if not dragging then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement
+	and input.UserInputType ~= Enum.UserInputType.Touch then return end
 
-local radius = size.X / 2
-if dist > radius then return end
+	local absPos = colorWheel.AbsolutePosition
+	local absSize = colorWheel.AbsoluteSize
+	local pos = Vector2.new(
+		input.Position.X - absPos.X,
+		input.Position.Y - absPos.Y
+	)
 
-local hue = (math.atan2(dy, dx) / (2 * math.pi)) + 0.5
-local sat = math.clamp(dist / radius, 0, 1)
+	local dx = pos.X - absSize.X / 2
+	local dy = pos.Y - absSize.Y / 2
+	local dist = math.sqrt(dx*dx + dy*dy)
 
--- IMPORTANT: value stays at 1 (this fixes dark issue)
-local color = Color3.fromHSV(hue, sat, 1)
+	local radius = absSize.X / 2
+	if dist > radius then return end
 
-highlightSettings.Color = color
-colorPreview.BackgroundColor3 = color
+	local hue = (math.atan2(dy, dx) / (2 * math.pi)) + 0.5
+	local sat = math.clamp(dist / radius, 0, 1)
+
+	local color = Color3.fromHSV(hue, sat, 1)
+
+	highlightSettings.Color = color
+	colorPreview.BackgroundColor3 = color
+end)
 
 -- Outline toggle
 local outlineBtn = Instance.new("TextButton")
@@ -1453,6 +1465,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
