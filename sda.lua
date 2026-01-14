@@ -980,7 +980,7 @@ pickerTitle.Font = Enum.Font.GothamBold
 pickerTitle.TextSize = 18
 pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
 pickerTitle.ZIndex = 52
-pickerTitle.Parent = pickerModal
+pickerTitle.Parent = pickerFrame
 
 -- Color preview button
 local colorPreview = Instance.new("TextButton")
@@ -1465,6 +1465,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
