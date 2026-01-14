@@ -963,22 +963,24 @@ local highlightSettings = highlightSettings or {
 
 local pickerFrame = Instance.new("Frame")
 pickerFrame.Size = UDim2.new(1, -30, 0, 150)
-pickerFrame.Position = UDim2.new(0, 15, 0, 110)
+pickerFrame.Position = UDim2.new(0.5, 0, 0, 110)
 pickerFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 pickerFrame.BorderSizePixel = 0
 pickerFrame.Parent = settingsOverlay
+pickerFrame.AnchorPoint = Vector2.new(0.5, 0)
 Instance.new("UICorner", pickerFrame).CornerRadius = UDim.new(0, 12)
 
 local pickerTitle = Instance.new("TextLabel")
-pickerTitle.Size = UDim2.new(1, -12, 0, 22)
-pickerTitle.Position = UDim2.new(0, 6, 0, 6)
+pickerTitle.Size = UDim2.new(1, -20, 0, 36)
+pickerTitle.Position = UDim2.new(0, 10, 0, 8)
 pickerTitle.BackgroundTransparency = 1
-pickerTitle.Text = "Dash Highlight"
-pickerTitle.TextColor3 = Color3.fromRGB(255,255,255)
+pickerTitle.Text = "Dash Highlight Color"
+pickerTitle.TextColor3 = Color3.new(1,1,1)
 pickerTitle.Font = Enum.Font.GothamBold
-pickerTitle.TextSize = 14
-pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
-pickerTitle.Parent = pickerFrame
+pickerTitle.TextSize = 18
+pickerTitle.TextXAlignment = Left
+pickerTitle.ZIndex = 52
+pickerTitle.Parent = pickerModal
 
 -- Color preview button
 local colorPreview = Instance.new("TextButton")
@@ -996,7 +998,7 @@ Instance.new("UICorner", colorPreview).CornerRadius = UDim.new(0, 8)
 -- Color wheel
 local colorWheel = Instance.new("ImageLabel")
 colorWheel.Size = UDim2.new(0, 110, 0, 110)
-colorWheel.Position = UDim2.new(0, 10, 0, 78)
+colorWheel.Position = UDim2.new(0.5, -55, 0, 40)
 colorWheel.Image = "rbxassetid://6020299385"
 colorWheel.BackgroundTransparency = 1
 colorWheel.Visible = false
@@ -1023,21 +1025,22 @@ colorWheel.InputEnded:Connect(function(input)
 	end
 end)
 
-UIS.InputChanged:Connect(function(input)
-	if not dragging or not colorWheel.Visible then return end
-	if input.UserInputType ~= Enum.UserInputType.MouseMovement
-	and input.UserInputType ~= Enum.UserInputType.Touch then return end
+-- Proper wheel math (keeps light colors)
+local dx = pos.X - size.X / 2
+local dy = pos.Y - size.Y / 2
+local dist = math.sqrt(dx*dx + dy*dy)
 
-	local pos = UIS:GetMouseLocation() - colorWheel.AbsolutePosition
-	local size = colorWheel.AbsoluteSize
+local radius = size.X / 2
+if dist > radius then return end
 
-	local x = math.clamp(pos.X / size.X, 0, 1)
-	local y = math.clamp(pos.Y / size.Y, 0, 1)
+local hue = (math.atan2(dy, dx) / (2 * math.pi)) + 0.5
+local sat = math.clamp(dist / radius, 0, 1)
 
-	local color = Color3.fromHSV(x, 1, 1 - y)
-	highlightSettings.Color = color
-	colorPreview.BackgroundColor3 = color
-end)
+-- IMPORTANT: value stays at 1 (this fixes dark issue)
+local color = Color3.fromHSV(hue, sat, 1)
+
+highlightSettings.Color = color
+colorPreview.BackgroundColor3 = color
 
 -- Outline toggle
 local outlineBtn = Instance.new("TextButton")
@@ -1450,6 +1453,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
