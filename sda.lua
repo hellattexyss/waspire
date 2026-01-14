@@ -978,7 +978,7 @@ pickerTitle.Text = "Dash Highlight Color"
 pickerTitle.TextColor3 = Color3.new(1,1,1)
 pickerTitle.Font = Enum.Font.GothamBold
 pickerTitle.TextSize = 18
-pickerTitle.TextXAlignment = Left
+pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
 pickerTitle.ZIndex = 52
 pickerTitle.Parent = pickerModal
 
@@ -1453,6 +1453,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
