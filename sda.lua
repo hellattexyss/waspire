@@ -744,7 +744,7 @@ titleLabel.Text = "Side Dash Assist"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 23
 titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.TextXAlignment = 0
 titleLabel.TextStrokeTransparency = 0.7
 titleLabel.Parent = headerFrame
 
@@ -768,7 +768,7 @@ authorLabel.Text = "by CPS Network"
 authorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 authorLabel.TextSize = 13
 authorLabel.Font = Enum.Font.GothamMedium
-authorLabel.TextXAlignment = Enum.TextXAlignment.Left
+authorLabel.TextXAlignment = 0
 authorLabel.TextTransparency = 0.28
 authorLabel.Parent = headerFrame
 
@@ -898,7 +898,7 @@ settingsTitle.Text = "Settings"
 settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 settingsTitle.TextSize = 20
 settingsTitle.Font = Enum.Font.GothamBold
-settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
+settingsTitle.TextXAlignment = 0
 settingsTitle.Parent = settingsOverlay
 
 local settingsCloseBtn = Instance.new("TextButton")
@@ -923,7 +923,7 @@ dashDistanceLabel.Text = "Dash Distance:"
 dashDistanceLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 dashDistanceLabel.TextSize = 13
 dashDistanceLabel.Font = Enum.Font.Gotham
-dashDistanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+dashDistanceLabel.TextXAlignment = 0
 dashDistanceLabel.Parent = settingsOverlay
 
 local dashDistanceButton = Instance.new("TextButton")
@@ -978,7 +978,7 @@ pickerTitle.Text = "Dash Highlight Color"
 pickerTitle.TextColor3 = Color3.new(1,1,1)
 pickerTitle.Font = Enum.Font.GothamBold
 pickerTitle.TextSize = 18
-pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
+pickerTitle.TextXAlignment = 0
 pickerTitle.ZIndex = 52
 pickerTitle.Parent = pickerFrame
 
@@ -1465,6 +1465,7 @@ end)
 print("subscribe to Waspire")
 
 --// END COMPLETE FIXED SNIPPET
+
 
 
 
